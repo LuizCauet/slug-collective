@@ -10,3 +10,5 @@
 Limitations: no physical-device test, real music integrations, real messages, trained ML, or work-media playback. All members, provider data, work concepts, and replies are simulated.
 
 Artist-search revision: five matching tests passed including community-frequency weighting, name normalization, and no invented overlap. Browser tested catalog search, custom artist entry, removal, persistence after refresh, and discovery reranking.
+
+Compact discovery revision: eight tests passed (matching, post filtering/order, bundled cover files). Browser verified album covers, posting, reaction and post persistence, title search, contextual messaging, desktop and phone-width layouts. Fixed mobile navigation spacing found during visual QA. Apple catalog artwork is cached locally for 48 artists; quinn has a generic fallback. Temporary phone fixture removed before packaging.
