@@ -8,3 +8,5 @@
 - Original SVG portraits and abstract album artwork are bundled locally; all 24 SVGs passed XML parsing.
 
 Limitations: no physical-device test, real music integrations, real messages, trained ML, or work-media playback. All members, provider data, work concepts, and replies are simulated.
+
+Artist-search revision: five matching tests passed including community-frequency weighting, name normalization, and no invented overlap. Browser tested catalog search, custom artist entry, removal, persistence after refresh, and discovery reranking.

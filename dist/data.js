@@ -1,3 +1,4 @@
+import {artistLists} from './artists.js';
 export const albums = [
  ['Charm','Clairo'],['Blonde','Frank Ocean'],['Two Star & the Dream Police','Mk.gee'],['Imaginal Disk','Magdalena Bay'],['Submarine','The Marías'],['Negro Swan','Blood Orange'],['In Rainbows','Radiohead'],['SOS','SZA'],['BUBBA','KAYTRANADA'],['Heaven or Las Vegas','Cocteau Twins'],['Lahai','Sampha'],['When I Get Home','Solange']
 ].map(([title,artist],id)=>({id,title,artist,art:`assets/album-${id}.svg`}));
@@ -15,5 +16,5 @@ const rows = [
  ['Ravi Shah','he/him','Oakes','Soul records and Sunday cooking. Learning bass one groove at a time.',[10,8,5],['Bass','Songwriting'],'A rhythm section and some good company.',null,null],
  ['Jules Nguyen','they/them','Kresge','Currently romanticizing the walk back from the library.',[1,0,3],['Writing','Photography'],'Zines, lyrics, or something we haven’t thought of.','Margin notes','A fictional poetry-zine concept.']
 ];
-export const members=rows.map((r,id)=>({id,name:r[0],pronouns:r[1],college:r[2],bio:r[3],albums:r[4],roles:r[5],intent:r[6],work:r[7],workDescription:r[8],avatar:`assets/avatar-${id}.svg`}));
+export const members=rows.map((r,id)=>({id,name:r[0],pronouns:r[1],college:r[2],bio:r[3],albums:r[4],artists:artistLists[id],roles:r[5],intent:r[6],work:r[7],workDescription:r[8],avatar:`assets/avatar-${id}.svg`}));
 export const roles=[...new Set(members.flatMap(m=>m.roles))].sort();

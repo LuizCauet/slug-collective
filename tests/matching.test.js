@@ -21,3 +21,16 @@ test('empty profile remains browsable and ranking is stable',()=>{
  assert.equal(result.length,12);
  assert.deepEqual(result.map(m=>m.id),members.map(m=>m.id));
 });
+test('shared artists with fewer listeners in the community carry more weight',()=>{
+ const sample=[{id:0,artists:['Common'],albums:[],roles:[]},{id:1,artists:['Deep cut'],albums:[],roles:[]},{id:2,artists:['Common'],albums:[],roles:[]}];
+ const result=rankMembers(sample,{favorites:[],artists:['Common','Deep cut'],roles:[]});
+ assert.equal(result[0].id,1);
+ assert.deepEqual(result[0].sharedArtists,['Deep cut']);
+});
+test('artist matching normalizes case and whitespace and never invents overlap',()=>{
+ const profile={favorites:[],artists:['  FEEBLE   LITTLE HORSE  '],roles:[]};
+ const result=rankMembers(members,profile);
+ assert.equal(result.filter(m=>m.sharedArtists.length).length,2);
+ assert.ok(result[0].sharedArtists.includes('feeble little horse'));
+ assert.ok(rankMembers(members,{...profile,artists:['An artist not in the demo']}).every(m=>m.sharedArtists.length===0));
+});
