@@ -20,3 +20,5 @@ Full-screen inbox revision: syntax passed; browser visually verified desktop edg
 Mobile inbox navigation revision: syntax passed. Browser tested 12 demo conversations at 390px, scrolling to and opening the final conversation, back navigation preserving list position, composer visibility, and desktop split view.
 
 Likes revision: syntax passed. Browser verified Like/Unlike toggles count 0/1 and preserves liked state on refresh, including migration of previous Same reactions. Counts reflect local demo reactions only.
+
+Discord revision: removed On repeat, posting/likes handlers and module; replaced with Club Discord navigation link. Six remaining tests passed. Browser verified no feed/post/like controls and exact invite URL, opening in a new tab.
