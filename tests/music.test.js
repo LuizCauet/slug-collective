@@ -54,6 +54,16 @@ test('provider failure statuses are actionable typed errors with no automatic re
   }
 });
 
+test('different MusicBrainz artists with the same name retain their separate identities', async () => {
+  const otherMbid='ae9ed5e2-4caf-4b3d-9cb3-2ad626b91714';
+  const result=await syncListenBrainz({username:'member',limiter,fetcher:async()=>artists([
+    {artist_name:'Same Name',artist_mbid:mbid,listen_count:20},
+    {artist_name:'Same Name',artist_mbid:otherMbid,listen_count:10},
+    {artist_name:'Alternate credit',artist_mbid:otherMbid,listen_count:12}
+  ])});
+  assert.deepEqual(result.artists,[{name:'Same Name',mbid,plays:20},{name:'Same Name',mbid:otherMbid,plays:12}]);
+});
+
 test('malformed JSON, wrong schema and secret-bearing network errors do not escape', async () => {
   await assert.rejects(syncListenBrainz({username:'member',limiter,fetcher:async()=>new Response('not JSON')}),e=>e.code==='INVALID_RESPONSE');
   await assert.rejects(syncListenBrainz({username:'member',limiter,fetcher:async()=>json({payload:{}})}),e=>e.code==='INVALID_RESPONSE');

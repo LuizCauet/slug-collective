@@ -84,16 +84,21 @@ function normalizeArtists(data) {
     if (!name || name.length > 300) continue;
     const mbid = typeof item.artist_mbid === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.artist_mbid) ? item.artist_mbid.toLowerCase() : null;
     const key = name.toLowerCase();
-    const existing = (mbid && mbids.get(mbid)) || names.get(key);
+    const sameName = names.get(key) || [];
+    // Distinct MusicBrainz entities can share a name. A known identity must not
+    // be overwritten merely because another artist has the same display name.
+    const byName = mbid ? sameName.find(a => !a.mbid || a.mbid === mbid)
+      : sameName.find(a => !a.mbid) || (sameName.length === 1 ? sameName[0] : null);
+    const existing = (mbid && mbids.get(mbid)) || byName;
     if (existing) {
       existing.plays = Math.max(existing.plays, item.listen_count);
       if (!existing.mbid && mbid) existing.mbid = mbid;
-      names.set(key, existing);
+      if (!sameName.includes(existing)) names.set(key, [...sameName, existing]);
       if (mbid) mbids.set(mbid, existing);
     } else {
       const artist = {name, mbid, plays: item.listen_count};
       artists.push(artist);
-      names.set(key, artist);
+      names.set(key, [...sameName, artist]);
       if (mbid) mbids.set(mbid, artist);
     }
   }

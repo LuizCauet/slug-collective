@@ -17,9 +17,9 @@ async function request(path,{member,method='GET',body,csrf=true,originHeader=ori
 }
 async function login(discordId,{invite='secret-club-invite'}={}){
  accounts.set(discordId,{id:discordId,username:`slug${discordId}`,global_name:`Member ${discordId}`});
- const start=await request('/auth/discord'+(invite?`?invite=${invite}`:''));
+ const start=await app.fetch(new Request(origin+'/auth/discord'+(invite?`?invite=${invite}`:''),{headers:{'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  const state=new URL(start.headers.get('Location')).searchParams.get('state');
- const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}&code=${discordId}`,{headers:{Cookie:jar(start)}}),env,{});
+ const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}&code=${discordId}`,{headers:{Cookie:jar(start),'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  if(!jar(response))return {response};
  const cookie=jar(response),me=await (await app.fetch(new Request(origin+'/api/me',{headers:{Cookie:cookie}}),env,{})).json();
  return {response,cookie,csrf:me.csrf,user:me.user};
@@ -143,4 +143,52 @@ test('expired record cleanup is bounded and preserves current sessions',async()=
  const response=await isolated.fetch(new Request(origin+'/api/me',{headers:{Cookie:member.cookie}}),env,{});assert.equal((await response.json()).authenticated,true);
  assert.equal((await db.prepare("SELECT count(*) AS n FROM oauth_states WHERE id LIKE 'expired-%'").first()).n,25);
  assert.equal(await db.prepare("SELECT id FROM rate_limits WHERE id='expired-rate'").first(),null);
+});
+
+test('feedback rejects a missing or malformed member identifier without server errors',async()=>{
+ const member=await login('124');
+ for(const memberId of [undefined,null,{},'',123]){
+  const response=await request('/api/feedback',{member,method:'POST',body:{helpful:true,...(memberId===undefined?{}:{memberId})}});
+  assert.equal(response.status,400);
+ }
+});
+test('a message arriving during a read remains unread until a subsequent fetch',async()=>{
+ const a=await login('125'),b=await login('126');
+ const thread=(await (await request('/api/threads',{member:a,method:'POST',body:{memberId:b.user.id}})).json()).thread;
+ let inserted=false;
+ const raceDb={prepare(sql){
+  const statement=db.prepare(sql);
+  if(!sql.startsWith('SELECT * FROM messages WHERE thread_id='))return statement;
+  return {bind(...args){const bound=statement.bind(...args);return {async all(){
+   const result=await bound.all();
+   if(!inserted){inserted=true;await new Promise(resolve=>setTimeout(resolve,5));await db.prepare('INSERT INTO messages(id,thread_id,sender_id,text,client_id,created_at) VALUES (?,?,?,?,?,?)').bind('during-read',thread.id,b.user.id,'Arrived during read','during-read',Date.now()).run();}
+   return result;
+  }};}};
+ },batch:db.batch.bind(db)};
+ const isolated=createApp();
+ const response=await isolated.fetch(new Request(`${origin}/api/threads/${thread.id}/messages`,{headers:{Cookie:a.cookie}}),{...env,DB:raceDb},{});
+ assert.equal(response.status,200);assert.equal((await response.json()).messages.length,0);
+ const list=(await (await request('/api/threads',{member:a})).json()).threads;
+ assert.equal(list.find(t=>t.id===thread.id).unreadCount,1);
+ assert.equal((await (await request(`/api/threads/${thread.id}/messages`,{member:a})).json()).messages.length,1);
+ assert.equal((await (await request('/api/threads',{member:a})).json()).threads.find(t=>t.id===thread.id).unreadCount,0);
+});
+
+test('disconnect wins over an in-flight music import',async()=>{
+ const member=await login('127');
+ let release,entered;
+ const waiting=new Promise(resolve=>{release=resolve;});
+ const started=new Promise(resolve=>{entered=resolve;});
+ const isolated=createApp({fetcher:async url=>{
+  if(url.endsWith('/validate-token'))return Response.json({valid:true,user_name:'test-slug'});
+  entered();await waiting;
+  return Response.json({payload:{artists:[{artist_name:'Deep Cut',listen_count:10}]}});
+ }});
+ const headers={Cookie:member.cookie,Origin:origin,'X-CSRF-Token':member.csrf,'Content-Type':'application/json'};
+ const sync=isolated.fetch(new Request(origin+'/api/music/listenbrainz/connect',{method:'POST',headers,body:JSON.stringify({token:'00000000-0000-4000-8000-000000000001'})}),env,{});
+ await started;
+ try{assert.equal((await request('/api/music/listenbrainz',{member,method:'DELETE'})).status,200);}finally{release();}
+ const response=await sync;assert.equal(response.status,409);
+ const current=(await (await request('/api/me',{member})).json()).user;
+ assert.equal(current.provider,null);assert.deepEqual(current.artists,[]);
 });
