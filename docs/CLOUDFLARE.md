@@ -13,7 +13,7 @@ Requires Node 22+ and a Cloudflare account. The app uses Workers Free and a D1 d
 
 ## Automatic GitHub deployment
 
-In Cloudflare Workers & Pages, connect LuizCauet/slug-collective and choose main. Build command: `npm run build`. Deploy command: `npm run deploy`. The Worker name must match slug-collective in wrangler.jsonc. Set NODE_VERSION to 22 or newer in the build settings. Database migrations run before Worker deployment; this repository uses additive, schema-only migrations. Do not place .dev.vars or Discord secrets into GitHub or build variables; the secret helper configures production runtime secrets directly.
+In Cloudflare Workers & Pages, connect LuizCauet/slug-collective and choose main. Build command: `npm run build`. Deploy command: `npm run deploy`. The Worker name must match beta in wrangler.jsonc. Set NODE_VERSION to 22 or newer in the build settings. Database migrations run before Worker deployment; this repository uses additive, schema-only migrations. Do not place .dev.vars or Discord secrets into GitHub or build variables; the secret helper configures production runtime secrets directly.
 
 ## Checks
 
@@ -25,6 +25,7 @@ In Cloudflare Workers & Pages, connect LuizCauet/slug-collective and choose main
 
 No local member records, conversations, or sessions are copied automatically. Use hosted accounts for the club launch. The older Sites demo remains separate while the Cloudflare deployment is verified.
 
-Current production: https://slug-collective.slug-collective.workers.dev
-Discord callback: https://slug-collective.slug-collective.workers.dev/auth/discord/callback
+Current production: https://beta.slugcollective.workers.dev
+Discord callback: https://beta.slugcollective.workers.dev/auth/discord/callback
 The DB binding in wrangler.jsonc points to the club database in the authorized Cloudflare account. Runtime secret values are stored in Cloudflare only, with local development values remaining in ignored .dev.vars.
+
