@@ -18,6 +18,8 @@ async function collect(directory) {
   for (const entry of await readdir(directory, {withFileTypes:true})) {
     const absolute = path.join(directory, entry.name);
     if (entry.isSymbolicLink()) throw new Error('Web assets must not be symbolic links.');
+    // Keep original club artwork in source; bundle only the selected web assets.
+    if (entry.isDirectory() && entry.name === 'Slug Collective Assets' && directory === path.join(source,'assets')) continue;
     if (entry.isDirectory()) await collect(absolute);
     else if (entry.isFile()) {
       const type = types[path.extname(entry.name).toLowerCase()];
