@@ -192,3 +192,23 @@ test('disconnect wins over an in-flight music import',async()=>{
  const current=(await (await request('/api/me',{member})).json()).user;
  assert.equal(current.provider,null);assert.deepEqual(current.artists,[]);
 });
+
+test('Spotify summary import validates input, isolates private counts, and coexists with manual and ListenBrainz',async()=>{
+ const a=await login('128'),b=await login('129');
+ const body={artists:[{name:'  Clairo  ',plays:10,msPlayed:200000},{name:'clairo',plays:8,msPlayed:150000},{name:'Only Spotify',plays:2,msPlayed:10000}],rawHistory:'must not persist',email:'private@example.com'};
+ assert.equal((await request('/api/music/spotify',{method:'POST',body})).status,401);
+ assert.equal((await request('/api/music/spotify',{member:a,method:'POST',body,csrf:false})).status,403);
+ await request('/api/profile',{member:a,method:'PUT',body:profile({artists:['Manual Only']})});
+ await db.prepare('UPDATE users SET imported_artists=?,provider_username=?,last_synced_at=? WHERE id=?').bind(JSON.stringify([{name:'ListenBrainz Only',plays:5,mbid:null}]),'some-slug',123,a.user.id).run();
+ const imported=await request('/api/music/spotify',{member:a,method:'POST',body});assert.equal(imported.status,200);
+ const user=(await imported.json()).user;assert.equal(user.spotify.artists.length,2);assert.equal(user.spotify.artists[0].plays,10);assert.deepEqual(new Set(user.artists),new Set(['Manual Only','ListenBrainz Only','Clairo','Only Spotify']));
+ const stored=await db.prepare('SELECT spotify_artists FROM users WHERE id=?').bind(a.user.id).first();assert.ok(!stored.spotify_artists.includes('private@example'));assert.ok(!stored.spotify_artists.includes('rawHistory'));
+ const exposed=(await (await request('/api/members',{member:b})).json()).members.find(m=>m.id===a.user.id);assert.equal(exposed.spotify,undefined);assert.equal(exposed.provider,undefined);assert.ok(exposed.artists.includes('Only Spotify'));
+ assert.equal((await (await request('/api/me',{member:b})).json()).user.spotify,null);
+ const replaced=(await (await request('/api/music/spotify',{member:a,method:'POST',body:{artists:[{name:'Reimported',plays:3,msPlayed:1}]}})).json()).user;assert.deepEqual(replaced.spotify.artists,[{name:'Reimported',plays:3,msPlayed:1}]);assert.ok(!replaced.artists.includes('Only Spotify'));
+ const removed=(await (await request('/api/music/spotify',{member:a,method:'DELETE'})).json()).user;assert.equal(removed.spotify,null);assert.deepEqual(new Set(removed.artists),new Set(['Manual Only','ListenBrainz Only']));assert.equal(removed.provider.username,'some-slug');
+ for(const artists of [null,{},Array.from({length:201},()=>({name:'x',plays:1,msPlayed:0})),[null],[{name:'',plays:1,msPlayed:0}],[{name:'x'.repeat(121),plays:1,msPlayed:0}],[{name:'x',plays:0,msPlayed:0}],[{name:'x',plays:1.1,msPlayed:0}],[{name:'x',plays:Number.MAX_SAFE_INTEGER+1,msPlayed:0}],[{name:'x',plays:1,msPlayed:-1}],[{name:'x',plays:1,msPlayed:'2'}]]){
+  assert.equal((await request('/api/music/spotify',{member:a,method:'POST',body:{artists}})).status,400);
+ }
+ assert.equal((await request('/api/music/spotify',{member:a,method:'POST',body:{artists:[],extra:'x'.repeat(130000)}})).status,413);
+});

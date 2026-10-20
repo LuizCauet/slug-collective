@@ -18,11 +18,14 @@ Members appear in People after joining. Create requires both an explicit collabo
 
 ## Current limits
 
-Matching uses normalized shared artists weighted by their frequency within this community, plus complementary roles for Create. It is an explainable baseline, not trained ML. Recommendation feedback is stored for later evaluation. Real Spotify/Apple Music imports, uploads/playback, notifications, and evaluated trained recommendations are future work. Messages use polling while the inbox is visible. A club pilot should define moderation/report retention expectations; see docs/SECURITY.md.
+Matching uses normalized shared artists weighted by their frequency within this community, plus complementary roles for Create. It is an explainable baseline, not trained ML. Recommendation feedback is stored for later evaluation. Direct Spotify/Apple Music connections, uploads/playback, notifications, and evaluated trained recommendations are future work. Messages use polling while the inbox is visible. A club pilot should define moderation/report retention expectations; see docs/SECURITY.md.
 
 The login page can be public while member APIs require Discord login and a valid app invite for initial registration. Existing members can return without a new invite. No fictional members or simulated replies are inserted into the real database.
 
 Messaging currently displays the newest 200 messages in each conversation; loading older history is not implemented yet.
 
 Direct Cloudflare hosting instructions: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+
+
+Spotify export ZIP/JSON imports are available in Profile → Connect services. Raw files are processed in a browser worker; only approved artist aggregates are saved. See [docs/SPOTIFY_IMPORT.md](docs/SPOTIFY_IMPORT.md).
 
