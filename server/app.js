@@ -80,6 +80,12 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
    await rate(db,`artist-search:${uid}`,90,60000);
    const key=query.toLowerCase(),cached=await get(db,'SELECT data FROM artist_search_cache WHERE query=? AND expires_at>?',key,Date.now());
    if(cached)return json({artists:parse(cached.data),source:'MusicBrainz / Apple'});
+   // Reuse complete artist names found in other searches, while partial queries still discover fresh results.
+   const known=await all(db,"SELECT artist.value AS data FROM (SELECT data FROM artist_search_cache WHERE expires_at>? ORDER BY expires_at DESC LIMIT 1000) AS cache, json_each(CASE WHEN json_valid(cache.data) THEN cache.data ELSE '[]' END) AS artist WHERE json_type(artist.value,'$.name')='text' AND lower(json_extract(artist.value,'$.name'))=? LIMIT 10",Date.now(),key);
+   const names=new Set(),reused=[];
+   for(const row of known){const artist=parse(row.data),name=typeof artist.name==='string'?artist.name.normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase():'';if(name===key&&!names.has(name)){names.add(name);reused.push(artist);}}
+   if(reused.length)return json({artists:reused,source:'MusicBrainz / Apple'});
+
    const now=Date.now(),reservation=await get(db,'INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET expires_at=MAX(rate_limits.expires_at,?)+1100 WHERE rate_limits.expires_at<=? RETURNING expires_at-1100 AS slot','artist-provider',now+1100,now,now+1500);
    if(!reservation)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);
    const wait=Math.max(0,reservation.slot-Date.now());if(wait>1500)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);

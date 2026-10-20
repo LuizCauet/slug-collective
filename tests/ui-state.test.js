@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
-function harness(width=390){
+function harness(width=390,storage=new Map()){
  const node={addEventListener(){},classList:{toggle(){}},innerHTML:''};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null};
- const context=vm.createContext({document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener(){}},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async path=>{state.calls.push(path);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
+ const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener(){}},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async path=>{state.calls.push(path);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
  const run=code=>vm.runInContext(code,context);
  context.onRender=()=>state.renders++;
  run("me={id:'viewer'};tab='inbox';render=()=>onRender();paintMessages=()=>{};");
- return {state,run};
+ return {state,run,storage};
 }
 test('an empty inbox polls and discovers its first incoming conversation',async()=>{
  const {state,run}=harness();run('startPoll()');assert.equal(typeof state.poll,'function');
@@ -73,4 +73,43 @@ test('empty artist search results remain a successful search with manual entry a
  assert.doesNotMatch(run('artistStatus()'),/couldn’t load/);
  assert.match(run('artistOptions()'),/Add “Unknown niche artist”/);
  assert.match(run('picker()'),/MusicBrainz/);assert.match(run('picker()'),/Apple/);
+});
+
+
+test('successful artist results persist as a public catalog and match partial names immediately after reload',async()=>{
+ const {run,state,storage}=harness();run("tab='profile';draft={artists:[]};updateArtistSearch=()=>{};artistQuery='Grouper';scheduleArtistSearch()");
+ state.artistHandler=async()=>({artists:[{id:'mb-grouper',name:'Grouper',description:'Ambient musician',query:'private search',memberId:'never-store'}]});
+ await run("fetchArtistSuggestions('Grouper',artistSearchVersion)");
+ const saved=JSON.parse(storage.get('slug-artist-catalog-v1'));
+ assert.equal(saved.length,1);assert.deepEqual(Object.keys(saved[0]).sort(),['cachedAt','description','id','name']);
+ assert.doesNotMatch(storage.get('slug-artist-catalog-v1'),/query|memberId|never-store/);
+ const reloaded=harness(390,storage);reloaded.run("tab='profile';draft={artists:[]};updateArtistSearch=()=>{};artistQuery='grou';scheduleArtistSearch()");
+ assert.equal(reloaded.state.calls.length,0);
+ assert.equal(reloaded.run('artistSuggestions()[0].name'),'Grouper');
+ assert.match(reloaded.run('artistOptions()'),/Ambient musician/);
+ assert.equal(reloaded.state.timers.at(-1).delay,650,'remote refresh still follows immediate catalog suggestions');
+});
+
+test('artist catalog rejects malformed, expired and oversized stored records without breaking search',()=>{
+ const key='slug-artist-catalog-v1',now=Date.now();
+ const storage=new Map([[key,JSON.stringify([
+ {id:'valid',name:'Fresh Artist',description:'Valid',cachedAt:now},
+ {id:'expired',name:'Old Artist',description:'Old',cachedAt:now-31*86400000},
+ {id:'future',name:'Future Artist',description:'Bad',cachedAt:now+86400000},
+ {id:'long-name',name:'a'.repeat(121),description:'Bad',cachedAt:now},
+ {id:'long-desc',name:'Bad Description',description:'a'.repeat(161),cachedAt:now},
+ {id:'a'.repeat(161),name:'Bad Identifier',description:'Bad',cachedAt:now},
+ {id:'missing-date',name:'Missing Date',description:'Bad'},
+ null
+ ])]]);
+ const {run}=harness(390,storage);assert.equal(run('publicArtistCatalog.length'),1);assert.equal(run('publicArtistCatalog[0].name'),'Fresh Artist');
+ const invalid=harness(390,new Map([[key,'{not json']]));assert.equal(invalid.run('publicArtistCatalog.length'),0);
+});
+
+test('public artist catalog is bounded and storage failure leaves in-memory suggestions available',()=>{
+ const {run,storage}=harness();
+ run("rememberPublicArtists(Array.from({length:550},(_,i)=>({id:'artist-'+i,name:'Public Artist '+i,description:''})))");
+ assert.equal(run('publicArtistCatalog.length'),500);assert.equal(JSON.parse(storage.get('slug-artist-catalog-v1')).length,500);
+ run("localStorage.setItem=()=>{throw new Error('Unavailable')};rememberPublicArtists([{id:'offline',name:'Offline Musician',description:'Still available'}]);draft={artists:[]};artistQuery='offline'");
+ assert.equal(run('artistSuggestions()[0].name'),'Offline Musician');
 });

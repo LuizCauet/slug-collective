@@ -264,3 +264,17 @@ test('Apple fallback shares a global request budget across users and stops befor
  assert.equal(await db.prepare('SELECT query FROM artist_search_cache WHERE query=?').bind('fallback budget').first(),null);
  await db.prepare('DELETE FROM rate_limits WHERE id=?').bind(key).run();
 });
+
+test('complete artist names reuse fresh shared results without starving partial discovery',async()=>{
+ const member=await login('135');let calls=0;
+ const instance=createApp({fetcher:async()=>{calls++;return Response.json({artists:[{id:'22345678-1234-1234-1234-123456789abc',name:'xaviersobased',score:100}]});}});
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+ assert.equal((await searchRequest(instance,member,'xavier')).status,200);assert.equal(calls,1);
+ const reused=await searchRequest(instance,member,'XAVIERSOBASED');assert.equal(reused.status,200);assert.equal((await reused.json()).artists[0].name,'xaviersobased');assert.equal(calls,1);
+ assert.equal((await searchRequest(instance,member,'xaviersoba')).status,200);assert.equal(calls,2);
+ // Expired results cannot satisfy the full-name cache lookup.
+ await db.prepare("UPDATE artist_search_cache SET expires_at=0 WHERE query IN ('xavier','xaviersoba')").run();
+ assert.equal((await searchRequest(instance,member,'xaviersobased')).status,200);assert.equal(calls,3);
+ // SQL wildcard/operator characters are literal values, never interpolated query code.
+ assert.equal((await searchRequest(instance,member,"%' OR 1=1 --")).status,200);assert.equal(calls,4);
+});
