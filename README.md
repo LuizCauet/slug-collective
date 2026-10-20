@@ -4,7 +4,7 @@ A mobile-first member app for the UCSC Slug Collective: music-based People disco
 
 ## Run locally
 
-Requires Node 20+. Run npm install, then npm run dev. Open http://127.0.0.1:5174. Copy .env.example to .dev.vars and follow docs/DISCORD_SETUP.md. Real sign-in requires Discord credentials; there is no production auth bypass. Local D1 data persists under ignored .mf/. npm run build bundles the Worker and local assets; npm test runs backend/music integration tests.
+Requires Node 22+. Run npm install, then npm run dev. Open http://127.0.0.1:5174. Copy .env.example to .dev.vars and follow docs/DISCORD_SETUP.md. Real sign-in requires Discord credentials; there is no production auth bypass. Local D1 data persists under ignored .mf/. npm run build bundles the Worker and local assets; npm test runs backend/music integration tests.
 
 ## Architecture
 
@@ -23,3 +23,6 @@ Matching uses normalized shared artists weighted by their frequency within this 
 The login page can be public while member APIs require Discord login and a valid app invite for initial registration. Existing members can return without a new invite. No fictional members or simulated replies are inserted into the real database.
 
 Messaging currently displays the newest 200 messages in each conversation; loading older history is not implemented yet.
+
+Direct Cloudflare hosting instructions: [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+
