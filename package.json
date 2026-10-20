@@ -1,1 +1,21 @@
-{"name":"slug-collective","private":true,"type":"module","engines":{"node":">=20"},"scripts":{"build":"node scripts/build.mjs","dev":"node scripts/dev.mjs","test":"node --test tests/*.test.js","check":"node --check server/app.js && node --check web/app.js","db:generate":"drizzle-kit generate"},"devDependencies":{"esbuild":"^0.25.0","miniflare":"^3.20241230.0","drizzle-kit":"^0.30.0","drizzle-orm":"^0.38.0"}}
+{
+  "name": "slug-collective",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test tests",
+    "check": "node --check server/app.js && node --check web/app.js",
+    "db:generate": "drizzle-kit generate"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "miniflare": "^3.20241230.0",
+    "drizzle-kit": "^0.30.0",
+    "drizzle-orm": "^0.38.0"
+  }
+}
