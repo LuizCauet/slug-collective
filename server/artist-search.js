@@ -43,7 +43,7 @@ async function boundedJson(response,signal){
 }
 
 /** Fixed-host provider only. The caller owns authentication, cache and rate limits. */
-export async function searchArtists(query,{fetcher=fetch,userAgent=DEFAULT_AGENT,timeoutMs=8000}={}){
+async function searchMusicBrainz(query,{fetcher=fetch,userAgent=DEFAULT_AGENT,timeoutMs=3000}={}){
   const literal=queryString(query);
   const url=new URL('https://musicbrainz.org/ws/2/artist/');
   url.searchParams.set('fmt','json');url.searchParams.set('limit','12');url.searchParams.set('query',literal);
@@ -51,7 +51,7 @@ export async function searchArtists(query,{fetcher=fetch,userAgent=DEFAULT_AGENT
   try{
     return await Promise.race([
       (async()=>{
-        const response=await fetcher(url.href,{headers:{Accept:'application/json','User-Agent':userAgent||DEFAULT_AGENT},signal:controller.signal,redirect:'error'});
+        const response=await fetcher(url.href,{headers:{Accept:'application/json','User-Agent':userAgent||DEFAULT_AGENT},signal:controller.signal,redirect:'manual'});
         if(response.status===429||response.status===503)fail('PROVIDER_UNAVAILABLE','Artist search is busy. You can still add the artist manually.',response.status,retryAfter(response.headers.get('Retry-After')));
         if(!response.ok)fail('PROVIDER_ERROR','Artist search is unavailable. You can still add the artist manually.');
         const data=await boundedJson(response,controller.signal);
@@ -71,4 +71,57 @@ export async function searchArtists(query,{fetcher=fetch,userAgent=DEFAULT_AGENT
     ]);
   }catch(error){if(error instanceof ArtistSearchError)throw error;fail('NETWORK_ERROR','Artist search is unavailable. You can still add the artist manually.');}
   finally{clearTimeout(timer);}
+}
+
+async function searchApple(query,{fetcher=fetch,userAgent=DEFAULT_AGENT,timeoutMs=4000}={}){
+  // Public artist-name metadata only, without artwork/audio/promotional assets.
+  // https://performance-partners.apple.com/search-api
+  const url=new URL('https://itunes.apple.com/search');
+  for(const [key,value] of Object.entries({term:clean(query),entity:'musicArtist',media:'music',limit:'10'}))url.searchParams.set(key,value);
+  const controller=new AbortController();let timer;
+  try{
+    return await Promise.race([
+      (async()=>{
+        const response=await fetcher(url.href,{headers:{Accept:'application/json','User-Agent':userAgent||DEFAULT_AGENT},signal:controller.signal,redirect:'manual'});
+        if(response.status===429||response.status===503)fail('PROVIDER_UNAVAILABLE','Artist search is busy. You can still add the artist manually.',response.status,retryAfter(response.headers.get('Retry-After')));
+        if(!response.ok)fail('PROVIDER_ERROR','Artist search is unavailable. You can still add the artist manually.');
+        const data=await boundedJson(response,controller.signal);
+        if(!Array.isArray(data?.results))fail('BAD_RESPONSE','Artist search returned unexpected data. Please try again.');
+        const names=new Set(),ids=new Set(),result=[];
+        for(const row of data.results.slice(0,200)){
+          const name=clean(row?.artistName),artistId=row?.artistId;
+          if(row?.wrapperType!=='artist'||!name||name.length>120||!Number.isSafeInteger(artistId)||artistId<=0)continue;
+          const key=name.toLocaleLowerCase('en'),id=`apple:${artistId}`;
+          if(names.has(key)||ids.has(id))continue;
+          names.add(key);ids.add(id);
+          result.push({id,name,description:clean(row.primaryGenreName).slice(0,160)});
+          if(result.length===10)break;
+        }
+        return result;
+      })(),
+      new Promise((_,reject)=>{timer=setTimeout(()=>{reject(new ArtistSearchError('TIMEOUT','Artist search took too long. You can still add the artist manually.',504));controller.abort();},timeoutMs);})
+    ]);
+  }catch(error){if(error instanceof ArtistSearchError)throw error;fail('NETWORK_ERROR','Artist search is unavailable. You can still add the artist manually.');}
+  finally{clearTimeout(timer);}
+}
+
+/** MusicBrainz first; Apple artist catalog fallback on empty/error responses. */
+export async function searchArtists(query,{fetcher=fetch,userAgent=DEFAULT_AGENT,timeoutMs=8000,reserveFallback=async()=>{}}={}){
+  queryString(query); // Invalid user input never makes either provider request.
+  const deadline=Date.now()+timeoutMs;
+  try{
+    const artists=await searchMusicBrainz(query,{fetcher,userAgent,timeoutMs:Math.min(3000,Math.max(1,Math.floor(timeoutMs*.45)))});
+    if(artists.length)return artists;
+  }catch(error){if(!(error instanceof ArtistSearchError)||error.code==='INVALID_QUERY')throw error;}
+  let timer;
+  try{
+    // The application callback reserves Apple's separate global provider quota.
+    // Preserve its typed error; a quota denial is not a provider network error.
+    await Promise.race([Promise.resolve().then(reserveFallback),new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(new ArtistSearchError('TIMEOUT','Artist search took too long. You can still add the artist manually.',504)),Math.max(1,deadline-Date.now()));
+    })]);
+  }finally{clearTimeout(timer);}
+  const remaining=deadline-Date.now();
+  if(remaining<=0)fail('TIMEOUT','Artist search took too long. You can still add the artist manually.',504);
+  return searchApple(query,{fetcher,userAgent,timeoutMs:Math.min(4000,remaining)});
 }

@@ -20,7 +20,7 @@ function artistNames(values){if(!Array.isArray(values)||values.length>200)fail(4
 function isAdmin(row,env){return (env.ADMIN_DISCORD_IDS||'').split(',').map(v=>v.trim()).includes(row.discord_id);}
 function userView(row,env,self=false){const manual=parse(row.manual_artists),imported=parse(row.imported_artists),spotify=parse(row.spotify_artists);const names=[...new Map([...manual,...imported.map(v=>v.name),...spotify.map(v=>v.name)].map(name=>[name.normalize('NFKC').toLowerCase(),name])).values()];const view={id:row.id,name:row.name,avatar:row.avatar,bio:row.bio,pronouns:row.pronouns,college:row.college,roles:parse(row.roles),intent:row.intent,openToCollaborating:!!row.open_to_collaborating,artists:names,workTitle:row.work_title,workUrl:row.work_url,albums:[]};if(self)Object.assign(view,{manualArtists:manual,provider:row.provider_username?{name:'listenbrainz',username:row.provider_username,lastSyncedAt:row.last_synced_at}:null,spotify:row.spotify_imported_at?{artists:spotify,importedAt:row.spotify_imported_at}:null,isAdmin:isAdmin(row,env)});return view;}
 async function readBody(req,maxBody=MAX_BODY){const declared=Number(req.headers.get('Content-Length'));if(declared>maxBody)fail(413,'TOO_LARGE','Request is too large.');if(!req.headers.get('Content-Type')?.includes('application/json'))fail(415,'JSON_REQUIRED','Send JSON data.');const reader=req.body?.getReader();if(!reader)return {};let size=0,parts=[];while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maxBody){await reader.cancel();fail(413,'TOO_LARGE','Request is too large.');}parts.push(value);}try{const bytes=new Uint8Array(size);let at=0;for(const part of parts){bytes.set(part,at);at+=part.length;}const body=JSON.parse(new TextDecoder().decode(bytes));if(!body||typeof body!=='object'||Array.isArray(body))throw 0;return body;}catch{fail(400,'INVALID_JSON','Request could not be read.');}}
-async function rate(db,key,max,windowMs){const now=Date.now(),bucket=Math.floor(now/windowMs),row=await get(db,'INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1 RETURNING count',`${key}:${bucket}`,now+windowMs*2);if(row.count>max)fail(429,'RATE_LIMITED','Too many requests. Please try again shortly.');}
+async function rate(db,key,max,windowMs){const now=Date.now(),bucket=Math.floor(now/windowMs),row=await get(db,'INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1 RETURNING count',`${key}:${bucket}`,now+windowMs*2);if(row.count>max){const error=new AppError(429,'RATE_LIMITED','Too many requests. Please try again shortly.');error.retryAfter=Math.max(1,Math.ceil(((bucket+1)*windowMs-now)/1000));throw error;}}
 async function validInvite(db,value,env){if(!value)return false;if(env.INITIAL_INVITE_CODE&&value===await hash(env.INITIAL_INVITE_CODE))return true;return !!await get(db,'SELECT id FROM invites WHERE token_hash=? AND revoked=0 AND expires_at>?',value,Date.now());}
 async function blocked(db,a,b){return !!await get(db,'SELECT blocker_id FROM blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?)',a,b,b,a);}
 async function session(req,env){const raw=cookies(req).slug_session;if(!raw)return null;return get(env.DB,'SELECT s.id AS session_id,s.csrf,s.expires_at,u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?',await hash(raw),Date.now());}
@@ -77,16 +77,16 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
    if(method!=='GET')fail(405,'METHOD_NOT_ALLOWED','Method not allowed.');
    const raw=url.searchParams.get('q')||'',query=raw.normalize('NFKC').replace(/\s+/g,' ').trim();
    if(/[\u0000-\u001f\u007f]/.test(raw)||query.length<2||query.length>80)fail(400,'INVALID_QUERY','Search using 2 to 80 characters.');
-   await rate(db,`artist-search:${uid}`,30,60000);
+   await rate(db,`artist-search:${uid}`,90,60000);
    const key=query.toLowerCase(),cached=await get(db,'SELECT data FROM artist_search_cache WHERE query=? AND expires_at>?',key,Date.now());
-   if(cached)return json({artists:parse(cached.data),source:'MusicBrainz'});
+   if(cached)return json({artists:parse(cached.data),source:'MusicBrainz / Apple'});
    const now=Date.now(),reservation=await get(db,'INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET expires_at=MAX(rate_limits.expires_at,?)+1100 WHERE rate_limits.expires_at<=? RETURNING expires_at-1100 AS slot','artist-provider',now+1100,now,now+1500);
    if(!reservation)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);
    const wait=Math.max(0,reservation.slot-Date.now());if(wait>1500)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);
    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-   const artists=await searchArtists(query,{fetcher,userAgent:`SlugCollective/1.0 (${env.MUSIC_CONTACT_URL||env.APP_ORIGIN})`});
+   const artists=await searchArtists(query,{fetcher,userAgent:`SlugCollective/1.0 (${env.MUSIC_CONTACT_URL||env.APP_ORIGIN})`,reserveFallback:()=>rate(db,'artist-apple-provider',20,60000)});
    await run(db,'INSERT INTO artist_search_cache(query,data,expires_at) VALUES (?,?,?) ON CONFLICT(query) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at',key,JSON.stringify(artists),Date.now()+DAY*7);
-   return json({artists,source:'MusicBrainz'});
+   return json({artists,source:'MusicBrainz / Apple'});
   }
   if(path==='/api/members'&&method==='GET'){const rows=await all(db,'SELECT * FROM users WHERE id<>? AND id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id=?) AND id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id=?) ORDER BY created_at DESC LIMIT 2000',uid,uid,uid);return json({members:rows.map(row=>userView(row,env))});}
   if(path==='/api/profile'&&method==='PUT'){

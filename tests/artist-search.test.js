@@ -11,7 +11,7 @@ test('autocomplete uses fixed host, safe options, explicit fields and final-toke
     const parsed=new URL(url);assert.equal(parsed.origin,'https://musicbrainz.org');assert.equal(parsed.pathname,'/ws/2/artist/');
     assert.equal(parsed.searchParams.get('fmt'),'json');assert.equal(parsed.searchParams.get('limit'),'12');
     assert.equal(parsed.searchParams.get('query'),'(artist:(feeble AND little AND hor*) OR alias:(feeble AND little AND hor*))');
-    assert.equal(options.redirect,'error');assert.equal(options.headers['User-Agent'],'SlugCollective/test (https://example.test)');
+    assert.equal(options.redirect,'manual');assert.equal(options.headers['User-Agent'],'SlugCollective/test (https://example.test)');
     assert.ok(options.signal instanceof AbortSignal);return response([artist('feeble little horse')]);
   }});
   assert.deepEqual(result,[{id:id(1),name:'feeble little horse',description:''}]);
@@ -19,12 +19,12 @@ test('autocomplete uses fixed host, safe options, explicit fields and final-toke
 
 test('Lucene operators, wildcard input and field injection are treated as literal tokens',async()=>{
   let query;
-  await searchArtists('OR x:y (z)* \\ /ab/',{fetcher:async url=>{query=new URL(url).searchParams.get('query');return response([]);}});
+  await searchArtists('OR x:y (z)* \\ /ab/',{fetcher:async url=>{query=new URL(url).searchParams.get('query');return response([artist('Test')]);}});
   assert.equal(query,'(artist:(\\OR AND x\\:y AND \\(z\\)\\* AND \\\\ AND \\/ab\\/*) OR alias:(\\OR AND x\\:y AND \\(z\\)\\* AND \\\\ AND \\/ab\\/*))');
 });
 
 test('Unicode query stays intact after normalization and URL encoding',async()=>{
-  await searchArtists('  天使の声  é  ',{fetcher:async url=>{assert.equal(new URL(url).searchParams.get('query'),'(artist:(天使の声 AND é*) OR alias:(天使の声 AND é*))');return response([]);}});
+  await searchArtists('  天使の声  é  ',{fetcher:async url=>{assert.equal(new URL(url).searchParams.get('query'),'(artist:(天使の声 AND é*) OR alias:(天使の声 AND é*))');return response([artist('Test')]);}});
 });
 
 test('invalid query lengths and controls fail before contacting provider',async()=>{
@@ -47,7 +47,7 @@ test('429 and 503 include retry hints; no automatic retries occur',async()=>{
   for(const status of [429,503]){
     let calls=0;
     await assert.rejects(searchArtists('niche',{fetcher:async()=>{calls++;return new Response(null,{status,headers:{'Retry-After':'17'}});}}),e=>e.code==='PROVIDER_UNAVAILABLE'&&e.status===status&&e.retryAfter===17);
-    assert.equal(calls,1);
+    assert.equal(calls,2);
   }
   await reject(searchArtists('niche',{fetcher:async()=>new Response(null,{status:500})}),'PROVIDER_ERROR',502);
 });
@@ -71,4 +71,64 @@ test('timeout bounds fetch and stalled body reads and aborts provider request',a
   let cancelled=false;
   await reject(searchArtists('niche',{timeoutMs:10,fetcher:async()=>new Response(new ReadableStream({cancel(){cancelled=true;}}))}),'TIMEOUT',504);
   assert.equal(cancelled,true);
+});
+
+test('Apple fallback finds xaviersobased and Nettspend when MusicBrainz is unavailable or empty',async()=>{
+  for(const [name,artistId,primaryStatus] of [['xaviersobased',1540848340,503],['Nettspend',1662047435,200]]){
+    const hosts=[];let reservations=0;
+    const result=await searchArtists(name,{reserveFallback:async()=>{reservations++;},fetcher:async(url,options)=>{
+      const parsed=new URL(url);hosts.push(parsed.host);
+      if(parsed.host==='musicbrainz.org')return primaryStatus===200?response([]):new Response(null,{status:primaryStatus});
+      assert.equal(reservations,1);assert.equal(parsed.origin,'https://itunes.apple.com');assert.equal(parsed.pathname,'/search');
+      assert.equal(parsed.searchParams.get('term'),name);assert.equal(parsed.searchParams.get('entity'),'musicArtist');
+      assert.equal(parsed.searchParams.get('media'),'music');assert.equal(parsed.searchParams.get('limit'),'10');assert.equal(options.redirect,'manual');
+      return new Response(JSON.stringify({results:[{wrapperType:'artist',artistId,artistName:name,primaryGenreName:'Hip-Hop/Rap'}]}));
+    }});
+    assert.deepEqual(hosts,['musicbrainz.org','itunes.apple.com']);
+    assert.deepEqual(result,[{id:`apple:${artistId}`,name,description:'Hip-Hop/Rap'}]);
+  }
+});
+
+test('MusicBrainz remains preferred and consumes no Apple quota when it has results',async()=>{
+  let calls=0;
+  await searchArtists('Nettspend',{reserveFallback:async()=>{throw new Error('Apple quota should not be needed');},fetcher:async()=>{calls++;return response([artist('Nettspend')]);}});
+  assert.equal(calls,1);
+});
+
+test('fallback quota errors retain their typed application identity without Apple network calls',async()=>{
+  const denial=Object.assign(new Error('Search quota exceeded'),{status:429,code:'RATE_LIMITED',retryAfter:3});let calls=0;
+  await assert.rejects(searchArtists('niche',{reserveFallback:async()=>{throw denial;},fetcher:async()=>{calls++;return response([]);}}),error=>error===denial);
+  assert.equal(calls,1);
+});
+
+test('Apple normalizes and deduplicates artist names, rejects non-artists and invalid IDs',async()=>{
+  let calls=0;
+  const result=await searchArtists('niche',{fetcher:async()=>++calls===1?response([]):new Response(JSON.stringify({results:[
+    {wrapperType:'artist',artistId:1,artistName:'  xaviersobased  ',primaryGenreName:'Hip-Hop/Rap'},
+    {wrapperType:'artist',artistId:2,artistName:'XAVIERSOBASED'},
+    {wrapperType:'track',artistId:3,artistName:'Track artist'},
+    {wrapperType:'artist',artistId:'4',artistName:'String ID'},
+    {wrapperType:'artist',artistId:0,artistName:'Invalid'},
+    {wrapperType:'artist',artistId:5,artistName:'x'.repeat(121)}
+  ]}))});
+  assert.deepEqual(result,[{id:'apple:1',name:'xaviersobased',description:'Hip-Hop/Rap'}]);
+});
+
+test('fallback proceeds after bounded primary timeout and preserves Unicode query text',async()=>{
+  let calls=0;
+  const result=await searchArtists('天使の声',{timeoutMs:60,fetcher:async url=>{
+    if(++calls===1)return new Promise(()=>{});
+    assert.equal(new URL(url).searchParams.get('term'),'天使の声');
+    return new Response(JSON.stringify({results:[{wrapperType:'artist',artistId:1,artistName:'天使の声'}]}));
+  }});
+  assert.equal(result[0].name,'天使の声');assert.equal(calls,2);
+});
+
+test('provider redirects use Workers-compatible manual mode and never follow redirect targets',async()=>{
+  const urls=[];
+  await reject(searchArtists('niche',{fetcher:async(url,options)=>{
+    urls.push(url);assert.equal(options.redirect,'manual');
+    return new Response(null,{status:302,headers:{Location:'https://untrusted.example/redirect'}});
+  }}),'PROVIDER_ERROR');
+  assert.deepEqual(urls.map(url=>new URL(url).origin),['https://musicbrainz.org','https://itunes.apple.com']);
 });

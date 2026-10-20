@@ -49,7 +49,7 @@ async function request(path, {fetcher = fetch, userAgent = DEFAULT_AGENT, limite
       (async () => {
         const headers = {'Accept': 'application/json', 'User-Agent': userAgent || DEFAULT_AGENT};
         if (token) headers.Authorization = `Token ${token}`;
-        const response = await fetcher(`${API}${path}`, {headers, signal: controller.signal, redirect: 'error'});
+        const response = await fetcher(`${API}${path}`, {headers, signal: controller.signal, redirect: 'manual'});
         if (response.status === 204) return null;
         if (response.status === 429) throw new MusicError('RATE_LIMITED', 'ListenBrainz is busy. Please try syncing again later.', 429, retrySeconds(response.headers.get('Retry-After')));
         if (response.status === 401 || response.status === 403) throw new MusicError('INVALID_TOKEN', 'That ListenBrainz token could not be verified.', 400);

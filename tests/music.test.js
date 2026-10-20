@@ -16,8 +16,10 @@ test('connection verifies ownership, imports statistics and never returns or for
   }});
   assert.equal(calls[0].url,'https://api.listenbrainz.org/1/validate-token');
   assert.equal(calls[0].options.headers.Authorization,`Token ${token}`);
+  assert.equal(calls[0].options.redirect,'manual');
   assert.equal(calls[1].url,'https://api.listenbrainz.org/1/stats/user/music%20fan/artists?range=all_time&count=200');
   assert.equal(calls[1].options.headers.Authorization,undefined);
+  assert.equal(calls[1].options.redirect,'manual');
   assert.equal(calls[1].options.headers['User-Agent'],'SlugCollective/test');
   assert.deepEqual(result.artists,[{name:'Deep Cut',mbid,plays:12}]);
   assert.equal(result.username,'music fan');
@@ -80,4 +82,13 @@ test('isolate limiter reserves one-second slots for concurrency and rejects over
   await Promise.all([limit(),limit(),limit()]);
   assert.deepEqual(sleeps,[1000,2000]);
   await assert.rejects(limit(),e=>e.code==='RATE_LIMITED' && e.retryAfter===3);
+});
+
+test('ListenBrainz redirects are rejected without forwarding ownership credentials',async()=>{
+  const calls=[];
+  await assert.rejects(connectListenBrainz({token,limiter,fetcher:async(url,options)=>{
+    calls.push(url);assert.equal(options.redirect,'manual');
+    return new Response(null,{status:302,headers:{Location:'https://untrusted.example/token'}});
+  }}),error=>error.code==='PROVIDER_ERROR');
+  assert.deepEqual(calls,['https://api.listenbrainz.org/1/validate-token']);
 });

@@ -43,7 +43,7 @@ test('artist search renders immediate local matches, excludes selected names and
 
 test('artist network search debounces, ignores stale replies and caches successful queries',async()=>{
  const {run,state}=harness();run("tab='profile';draft={artists:[]};updateArtistSearch=()=>{};artistQuery='Tirzah';scheduleArtistSearch()");
- assert.equal(state.timers.at(-1).delay,400);assert.equal(state.calls.length,0);
+ assert.equal(state.timers.at(-1).delay,650);assert.equal(state.calls.length,0);
  const deferred=[];state.artistHandler=()=>new Promise(resolve=>deferred.push(resolve));
  const first=run("fetchArtistSuggestions('Tirzah',artistSearchVersion)");
  run("artistQuery='Grouper';scheduleArtistSearch()");
@@ -61,5 +61,16 @@ test('artist network failures retain custom entry and local fallback',async()=>{
  state.artistHandler=async()=>{throw new Error('Unavailable');};
  await run("fetchArtistSuggestions('Dean',artistSearchVersion)");
  assert.equal(run('artistSearchState'),'error');assert.match(run('artistOptions()'),/Dean Blunt/);assert.match(run('artistOptions()'),/Add “Dean”/);
- assert.match(run('artistStatus()'),/Add the name yourself/);
+ assert.match(run('artistStatus()'),/You can still add this name/);
+});
+
+
+test('empty artist search results remain a successful search with manual entry available',async()=>{
+ const {run,state}=harness();run("tab='profile';draft={artists:[]};updateArtistSearch=()=>{};artistQuery='Unknown niche artist';scheduleArtistSearch()");
+ state.artistHandler=async()=>({artists:[],source:'Apple'});
+ await run("fetchArtistSuggestions('Unknown niche artist',artistSearchVersion)");
+ assert.equal(run('artistSearchState'),'ready');
+ assert.doesNotMatch(run('artistStatus()'),/couldn’t load/);
+ assert.match(run('artistOptions()'),/Add “Unknown niche artist”/);
+ assert.match(run('picker()'),/MusicBrainz/);assert.match(run('picker()'),/Apple/);
 });

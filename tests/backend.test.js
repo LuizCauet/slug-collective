@@ -223,11 +223,11 @@ test('artist search requires membership, validates queries, shares normalized ca
  assert.equal((await searchRequest(instance,null,'Hidden')).status,401);
  for(const q of ['','x','x'.repeat(81),'abc\nxyz'])assert.equal((await searchRequest(instance,a,q)).status,400);
  await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
- const first=await searchRequest(instance,a,'Hidden');assert.equal(first.status,200);assert.equal((await first.json()).source,'MusicBrainz');
+ const first=await searchRequest(instance,a,'Hidden');assert.equal(first.status,200);assert.equal((await first.json()).source,'MusicBrainz / Apple');
  assert.equal((await searchRequest(instance,b,'  HIDDEN  ')).status,200);assert.equal(calls,1);
  assert.ok(searches[0].url.startsWith('https://musicbrainz.org/ws/2/artist/'));assert.ok(!searches[0].url.includes(a.user.id));assert.equal(searches[0].options.headers.Cookie,undefined);
  assert.equal((await db.prepare('SELECT expires_at FROM artist_search_cache WHERE query=?').bind('hidden').first()).expires_at>Date.now()+6*86400000,true);
- for(let n=0;n<29;n++)assert.equal((await searchRequest(instance,a,'Hidden')).status,200);
+ for(let n=0;n<89;n++)assert.equal((await searchRequest(instance,a,'Hidden')).status,200);
  assert.equal((await searchRequest(instance,a,'Hidden')).status,429);assert.equal(calls,1);
 });
 test('artist provider slots are spaced across app instances and reject an excessive queue',async()=>{
@@ -249,4 +249,18 @@ test('artist provider failures and timeouts are honest and never stored as succe
  const hanging=createApp({fetcher:()=>new Promise(()=>{})});
  const timedOut=await searchRequest(hanging,member,'Provider Timeout');assert.equal(timedOut.status,504);assert.equal((await timedOut.json()).error.code,'TIMEOUT');
  assert.equal(await db.prepare('SELECT query FROM artist_search_cache WHERE query=?').bind('provider timeout').first(),null);
+});
+
+test('Apple fallback shares a global request budget across users and stops before upstream when exhausted',async()=>{
+ const member=await login('134');let appleCalls=0;
+ const instance=createApp({fetcher:async url=>{
+  if(url.startsWith('https://musicbrainz.org/'))return new Response('',{status:503});
+  appleCalls++;return Response.json({results:[{wrapperType:'artist',artistType:'Artist',artistId:123,artistName:'Fallback Artist'}]});
+ }});
+ const bucket=Math.floor(Date.now()/60000),key=`artist-apple-provider:${bucket}`;
+ await db.prepare('INSERT INTO rate_limits(id,count,expires_at) VALUES (?,20,?) ON CONFLICT(id) DO UPDATE SET count=20,expires_at=excluded.expires_at').bind(key,Date.now()+120000).run();
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+ const denied=await searchRequest(instance,member,'Fallback Budget');assert.equal(denied.status,429);assert.ok(Number(denied.headers.get('Retry-After'))>=1);assert.equal(appleCalls,0);
+ assert.equal(await db.prepare('SELECT query FROM artist_search_cache WHERE query=?').bind('fallback budget').first(),null);
+ await db.prepare('DELETE FROM rate_limits WHERE id=?').bind(key).run();
 });
