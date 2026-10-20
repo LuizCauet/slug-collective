@@ -1,0 +1,11 @@
+node_modules/
+.dev.vars
+.env
+.env.*
+!.env.example
+.mf/
+.wrangler/
+.local/
+dist/
+*.tar.gz
+*.log
