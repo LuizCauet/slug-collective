@@ -1,17 +1,23 @@
-# Slug Collective demo
+# Slug Collective
 
-A mobile-first, buildless interactive prototype with fictional members and original local SVG assets. People and Create share one profile and inbox. No external runtime dependencies.
+A mobile-first member app for the UCSC Slug Collective: music-based People discovery, opt-in Create directory, and private in-app conversations. Independent of UC Santa Cruz.
 
-Run `python -m http.server 5173 --bind 127.0.0.1 --directory dist` from this folder and open http://127.0.0.1:5173. Run `npm test` for matching checks and `npm run check` for app syntax.
+## Run locally
 
-All demo data is stored under `slug-collective-demo-v1` in browser local storage. Reset it from Profile. Provider connections and replies are simulated; no credentials are collected. Artwork is illustrative and is not the named albums' official cover artwork.
+Requires Node 20+. Run npm install, then npm run dev. Open http://127.0.0.1:5174. Copy .env.example to .dev.vars and follow docs/DISCORD_SETUP.md. Real sign-in requires Discord credentials; there is no production auth bypass. Local D1 data persists under ignored .mf/. npm run build bundles the Worker and local assets; npm test runs backend/music integration tests.
 
-Matching is deterministic, not trained ML: exact shared artists rank People, with inverse community-frequency weighting, while complementary roles add weight in Create. The separate `dist/matching.js` module is the replacement point for future recommendations.
+## Architecture
 
-Future work: real authentication, provider-authorized music imports, durable multi-user messaging, work uploads and playback, member moderation, and evaluated ML recommendations. This demo is independent of UC Santa Cruz and does not imply university endorsement.
+- web/: browser interface, local bundled artwork, deterministic matching.
+- server/: Discord OAuth, hashed cookie sessions, D1 member/message APIs, ListenBrainz import.
+- db/ and drizzle/: schema and immutable generated migrations.
+- scripts/: dependency-based build and Miniflare development server.
+- .openai/hosting.json: existing Sites identity and logical DB binding. Secrets belong in the hosted environment, never this manifest.
 
-Revision: black/yellow/purple visual identity and bold sans type. The album checklist is replaced by artist search with arbitrary custom entries. Matching normalizes artist names and weighs community overlap, not global artist popularity. Sample counts refer only to fictional members. Existing saved album selections migrate into artist names.
+Members appear in People after joining. Create requires both an explicit collaboration opt-in and at least one creative role. Work links are optional. Members can manually add niche artists or verify their ListenBrainz account with a one-use token; the token is discarded. Listening history on ListenBrainz is public. Imported aggregate artist lists can be disconnected independently of manual choices.
 
-Discovery revision: compact People/Create controls replace headers and hero copy. People cards use local album covers from Apple catalog records, with source links stored in dist/music-art.js. On repeat demonstrates changing member listening posts; sharing replaces your one current local record, reactions persist, and Say hey carries the record/note into messages. Sample member posts remain fictional and static; this is not a real-time feed. Unknown artists or record titles use a generic music placeholder rather than unrelated cover art.
+## Current limits
 
-Current navigation: People, Create, Inbox, Profile, and an external Club Discord link (https://discord.gg/FtV5CYWHW3). On repeat, posting, and likes have been removed; club sharing stays on Discord. Legacy browser-local post/reaction data is ignored.
+Matching uses normalized shared artists weighted by their frequency within this community, plus complementary roles for Create. It is an explainable baseline, not trained ML. Recommendation feedback is stored for later evaluation. Real Spotify/Apple Music imports, uploads/playback, notifications, and evaluated trained recommendations are future work. Messages use polling while the inbox is visible. A club pilot should define moderation/report retention expectations; see docs/SECURITY.md.
+
+The login page can be public while member APIs require Discord login and a valid app invite for initial registration. Existing members can return without a new invite. No fictional members or simulated replies are inserted into the real database.

@@ -1,0 +1,146 @@
+import test, {before, after} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile, readdir} from 'node:fs/promises';
+import {Miniflare} from 'miniflare';
+import {createApp} from '../server/app.js';
+
+let mf, db, env, app;
+const origin='https://club.example';
+const accounts=new Map();
+const jar=response=>{const cookies=response.headers.getSetCookie();return cookies.filter(v=>!v.includes('Max-Age=0')).map(v=>v.split(';')[0]).join('; ');};
+async function request(path,{member,method='GET',body,csrf=true,originHeader=origin}={}){
+ const headers={};if(member){headers.Cookie=member.cookie;if(csrf)headers['X-CSRF-Token']=member.csrf;}
+ if(method!=='GET')headers.Origin=originHeader;
+ if(body!==undefined)headers['Content-Type']='application/json';
+ const response=await app.fetch(new Request(origin+path,{method,headers,...(body!==undefined?{body:JSON.stringify(body)}:{})}),env,{});
+ return response;
+}
+async function login(discordId,{invite='secret-club-invite'}={}){
+ accounts.set(discordId,{id:discordId,username:`slug${discordId}`,global_name:`Member ${discordId}`});
+ const start=await request('/auth/discord'+(invite?`?invite=${invite}`:''));
+ const state=new URL(start.headers.get('Location')).searchParams.get('state');
+ const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}&code=${discordId}`,{headers:{Cookie:jar(start)}}),env,{});
+ if(!jar(response))return {response};
+ const cookie=jar(response),me=await (await app.fetch(new Request(origin+'/api/me',{headers:{Cookie:cookie}}),env,{})).json();
+ return {response,cookie,csrf:me.csrf,user:me.user};
+}
+const profile=(extra={})=>({name:'A Slug',bio:'',pronouns:'',college:'',roles:[],intent:'',openToCollaborating:false,artists:['Clairo'],workTitle:'',workUrl:'',...extra});
+before(async()=>{
+ mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("ok")}}',compatibilityDate:'2024-12-30',d1Databases:['DB']});
+ db=await mf.getD1Database('DB');
+ for(const name of (await readdir(new URL('../drizzle/',import.meta.url))).filter(n=>n.endsWith('.sql')).sort()){
+  const sql=await readFile(new URL('../drizzle/'+name,import.meta.url),'utf8');
+  for(const statement of sql.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(statement).run();
+ }
+ env={DB:db,APP_ORIGIN:origin,DISCORD_CLIENT_ID:'test-client',DISCORD_CLIENT_SECRET:'test-secret',INITIAL_INVITE_CODE:'secret-club-invite',ADMIN_DISCORD_IDS:'100'};
+ app=createApp({fetcher:async(url,options)=>{
+  if(url.endsWith('/oauth2/token'))return Response.json({access_token:new URLSearchParams(options.body).get('code')});
+  if(url.endsWith('/users/@me'))return Response.json(accounts.get(options.headers.Authorization.split(' ')[1]));
+  throw new Error('Unexpected upstream request');
+ }});
+});
+after(async()=>{await mf?.dispose();});
+
+test('anonymous access never exposes members, threads, or privileged endpoints',async()=>{
+ assert.deepEqual(await (await request('/api/me')).json(),{authenticated:false});
+ for(const path of ['/api/members','/api/threads','/api/admin/reports'])assert.equal((await request(path)).status,401);
+ assert.equal((await request('/api/profile',{method:'PUT',body:profile()})).status,401);
+});
+test('OAuth requires matching browser state and a valid invite for first registration',async()=>{
+ const missing=await request('/auth/discord/callback?state=forged&code=100');assert.match(missing.headers.get('Location'),/invalid_login/);
+ const denied=await login('101',{invite:null});assert.match(denied.response.headers.get('Location'),/invite_required/);
+ const member=await login('101');assert.equal(member.user.name,'Member 101');
+ assert.match(member.response.headers.get('Set-Cookie'),/HttpOnly/);assert.match(member.response.headers.get('Set-Cookie'),/Secure/);
+ const returning=await login('101',{invite:null});assert.equal(returning.user.id,member.user.id);
+ const start=await request('/auth/discord?invite=secret-club-invite'),state=new URL(start.headers.get('Location')).searchParams.get('state');
+ const callback=new Request(`${origin}/auth/discord/callback?state=${state}&code=101`,{headers:{Cookie:jar(start)}});
+ assert.equal((await app.fetch(callback,env,{})).headers.get('Location'),'/');
+ assert.match((await app.fetch(callback,env,{})).headers.get('Location'),/expired_login/);
+});
+test('profile writes require CSRF and same-origin, validate opt-in and work URLs, and persist',async()=>{
+ const a=await login('102');
+ assert.equal((await request('/api/profile',{member:a,method:'PUT',body:profile(),csrf:false})).status,403);
+ assert.equal((await request('/api/profile',{member:a,method:'PUT',body:profile(),originHeader:'https://evil.example'})).status,403);
+ for(const fields of [{roles:['Root']},{openToCollaborating:true},{workUrl:'javascript:alert(1)'},{workUrl:'https://user:pass@example.com'}])assert.equal((await request('/api/profile',{member:a,method:'PUT',body:profile(fields)})).status,400);
+ const response=await request('/api/profile',{member:a,method:'PUT',body:profile({roles:['Guitar'],openToCollaborating:true,artists:['Clairo','clairo','  Wednesday  ']})});
+ assert.equal(response.status,200);const saved=(await response.json()).user;assert.deepEqual(saved.manualArtists,['clairo','Wednesday']);assert.equal(saved.openToCollaborating,true);
+ const observer=await login('103');const members=(await (await request('/api/members',{member:observer})).json()).members;
+ assert.equal(members.find(m=>m.id===a.user.id).openToCollaborating,true);assert.equal(members.find(m=>m.id===a.user.id).manualArtists,undefined);
+ assert.equal((await request('/api/admin/reports',{member:a})).status,403);
+});
+test('conversations isolate members, deduplicate sends, preserve messages, and enforce blocks',async()=>{
+ const a=await login('104'),b=await login('105'),stranger=await login('106');
+ const created=await request('/api/threads',{member:a,method:'POST',body:{memberId:b.user.id,context:'Clairo'}});assert.equal(created.status,201);
+ const thread=(await created.json()).thread,path=`/api/threads/${thread.id}/messages`;
+ const reverse=(await (await request('/api/threads',{member:b,method:'POST',body:{memberId:a.user.id}})).json()).thread;assert.equal(reverse.id,thread.id);
+ for(const method of ['GET','POST'])assert.equal((await request(path,{member:stranger,method,...(method==='POST'?{body:{text:'intrusion',clientId:'evil'}}:{})})).status,404);
+ const body={text:'That album is fire',clientId:'retry-me'};
+ assert.equal((await request(path,{member:a,method:'POST',body})).status,201);assert.equal((await request(path,{member:a,method:'POST',body})).status,200);
+ const messages=(await (await request(path,{member:b})).json()).messages;assert.equal(messages.length,1);assert.equal(messages[0].text,body.text);
+ assert.equal((await request('/api/blocks',{member:b,method:'POST',body:{memberId:a.user.id}})).status,200);
+ assert.equal((await request(path,{member:a,method:'POST',body:{text:'blocked',clientId:'new'}})).status,403);
+ assert.equal((await request(path,{member:b})).status,403);
+ assert.equal((await (await request('/api/threads',{member:a})).json()).threads.length,0);
+ assert.ok(!(await (await request('/api/members',{member:a})).json()).members.some(m=>m.id===b.user.id));
+});
+test('admin invites can be revoked and account deletion invalidates sessions',async()=>{
+ const admin=await login('100');const made=await request('/api/admin/invites',{member:admin,method:'POST'});assert.equal(made.status,201);
+ const invite=(await made.json()).invite,code=new URL(invite.url).searchParams.get('invite');
+ assert.ok((await login('107',{invite:code})).user);
+ assert.equal((await request(`/api/admin/invites/${invite.id}`,{member:admin,method:'DELETE'})).status,200);
+ assert.match((await login('108',{invite:code})).response.headers.get('Location'),/invite_required/);
+ const deleted=await login('109');assert.equal((await request('/api/me',{member:deleted,method:'DELETE'})).status,200);
+ assert.deepEqual(await (await request('/api/me',{member:deleted})).json(),{authenticated:false});
+ assert.equal((await request('/api/members',{member:deleted})).status,401);
+});
+
+test('expired sessions are rejected, reports and feedback persist, and logout revokes session',async()=>{
+ const a=await login('110'),b=await login('111'),admin=await login('100');
+ assert.equal((await request('/api/reports',{member:a,method:'POST',body:{memberId:b.user.id,reason:'Unwanted contact'}})).status,200);
+ assert.equal((await request('/api/feedback',{member:a,method:'POST',body:{memberId:b.user.id,helpful:true}})).status,200);
+ assert.equal((await request('/api/feedback',{member:a,method:'POST',body:{memberId:b.user.id,helpful:'yes'}})).status,400);
+ const reports=(await (await request('/api/admin/reports',{member:admin})).json()).reports;
+ assert.ok(reports.some(r=>r.member_id===b.user.id&&r.reason==='Unwanted contact'));
+ assert.equal((await db.prepare('SELECT count(*) AS n FROM feedback WHERE user_id=? AND member_id=?').bind(a.user.id,b.user.id).first()).n,1);
+ await db.prepare('UPDATE sessions SET expires_at=0 WHERE user_id=?').bind(b.user.id).run();
+ assert.equal((await request('/api/threads',{member:b})).status,401);
+ assert.equal((await request('/api/logout',{member:a,method:'POST'})).status,200);
+ assert.equal((await request('/api/members',{member:a})).status,401);
+});
+
+test('concurrent message retries return one persisted message and reject cross-thread client IDs',async()=>{
+ const a=await login('120'),b=await login('121'),c=await login('122');
+ const thread=async other=>(await (await request('/api/threads',{member:a,method:'POST',body:{memberId:other.user.id}})).json()).thread.id;
+ const first=await thread(b),second=await thread(c),body={text:'One message',clientId:'concurrent-client-id'};
+ const responses=await Promise.all(Array.from({length:4},()=>request(`/api/threads/${first}/messages`,{member:a,method:'POST',body})));
+ assert.ok(responses.every(r=>[200,201].includes(r.status)));
+ const values=await Promise.all(responses.map(r=>r.json()));assert.equal(new Set(values.map(v=>v.message.id)).size,1);
+ assert.equal((await (await request(`/api/threads/${first}/messages`,{member:b})).json()).messages.length,1);
+ assert.equal((await request(`/api/threads/${second}/messages`,{member:a,method:'POST',body})).status,409);
+});
+test('OAuth endpoints reject non-GET requests and invalid issuer or oversized codes',async()=>{
+ for(const route of ['/auth/discord','/auth/discord/callback'])assert.equal((await request(route,{method:'POST'})).status,405);
+ const start=await request('/auth/discord?invite=secret-club-invite'),state=new URL(start.headers.get('Location')).searchParams.get('state');
+ for(const suffix of ['&code=100&iss=https%3A%2F%2Fevil.example','&code='+ 'x'.repeat(2049)]){
+  const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}${suffix}`,{headers:{Cookie:jar(start)}}),env,{});
+  assert.match(response.headers.get('Location'),/invalid_login/);
+ }
+});
+test('auth attempts are bounded by trusted edge IP, ignoring spoofed forwarded headers',async()=>{
+ let limited;
+ for(let n=0;n<61;n++){
+  limited=await app.fetch(new Request(origin+'/auth/discord',{headers:{'CF-Connecting-IP':'192.0.2.17','X-Forwarded-For':`192.0.2.${n}`}}),env,{});
+ }
+ assert.equal(limited.status,429);
+ assert.equal((await app.fetch(new Request(origin+'/auth/discord',{headers:{'CF-Connecting-IP':'192.0.2.18'}}),env,{})).status,302);
+});
+test('expired record cleanup is bounded and preserves current sessions',async()=>{
+ const member=await login('123');
+ const expired=Array.from({length:125},(_,n)=>db.prepare('INSERT INTO oauth_states(id,expires_at) VALUES (?,0)').bind('expired-'+n));
+ await db.batch(expired);
+ await db.prepare('INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,0)').bind('expired-rate').run();
+ const isolated=createApp();
+ const response=await isolated.fetch(new Request(origin+'/api/me',{headers:{Cookie:member.cookie}}),env,{});assert.equal((await response.json()).authenticated,true);
+ assert.equal((await db.prepare("SELECT count(*) AS n FROM oauth_states WHERE id LIKE 'expired-%'").first()).n,25);
+ assert.equal(await db.prepare("SELECT id FROM rate_limits WHERE id='expired-rate'").first(),null);
+});
