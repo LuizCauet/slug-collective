@@ -24,3 +24,7 @@ In Cloudflare Workers & Pages, connect LuizCauet/slug-collective and choose main
 - Test first-member registration, returning login, profile persistence, and two-member messaging with the hosted callback.
 
 No local member records, conversations, or sessions are copied automatically. Use hosted accounts for the club launch. The older Sites demo remains separate while the Cloudflare deployment is verified.
+
+Current production: https://slug-collective.slug-collective.workers.dev
+Discord callback: https://slug-collective.slug-collective.workers.dev/auth/discord/callback
+The DB binding in wrangler.jsonc points to the club database in the authorized Cloudflare account. Runtime secret values are stored in Cloudflare only, with local development values remaining in ignored .dev.vars.

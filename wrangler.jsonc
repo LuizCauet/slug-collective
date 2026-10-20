@@ -4,12 +4,15 @@
   "main": "dist/server/index.js",
   "compatibility_date": "2024-12-30",
   "workers_dev": true,
-  "build": { "command": "npm run build" },
+  "build": {
+    "command": "npm run build"
+  },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "slug-collective",
-      "migrations_dir": "drizzle"
+      "migrations_dir": "drizzle",
+      "database_id": "0c1ec204-a646-4b81-96bb-6d06a48329e3"
     }
   ]
 }
