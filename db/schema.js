@@ -11,3 +11,5 @@ export const blocks=sqliteTable('blocks',{blockerId:text('blocker_id').notNull()
 export const reports=sqliteTable('reports',{id:text('id').primaryKey(),reporterId:text('reporter_id').references(()=>users.id,{onDelete:'set null'}),memberId:text('member_id').references(()=>users.id,{onDelete:'set null'}),reason:text('reason').notNull(),createdAt:integer('created_at').notNull(),status:text('status').notNull().default('open')});
 export const feedback=sqliteTable('feedback',{id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),memberId:text('member_id').notNull().references(()=>users.id,{onDelete:'cascade'}),helpful:integer('helpful').notNull(),createdAt:integer('created_at').notNull()});
 export const rateLimits=sqliteTable('rate_limits',{id:text('id').primaryKey(),count:integer('count').notNull(),expiresAt:integer('expires_at').notNull()});
+
+export const artistSearchCache=sqliteTable('artist_search_cache',{query:text('query').primaryKey(),data:text('data').notNull(),expiresAt:integer('expires_at').notNull()});

@@ -138,11 +138,13 @@ test('expired record cleanup is bounded and preserves current sessions',async()=
  const member=await login('123');
  const expired=Array.from({length:125},(_,n)=>db.prepare('INSERT INTO oauth_states(id,expires_at) VALUES (?,0)').bind('expired-'+n));
  await db.batch(expired);
+ await db.batch(Array.from({length:125},(_,n)=>db.prepare('INSERT INTO artist_search_cache(query,data,expires_at) VALUES (?, ?, 0)').bind('expired-cache-'+n,'[]')));
  await db.prepare('INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,0)').bind('expired-rate').run();
  const isolated=createApp();
  const response=await isolated.fetch(new Request(origin+'/api/me',{headers:{Cookie:member.cookie}}),env,{});assert.equal((await response.json()).authenticated,true);
  assert.equal((await db.prepare("SELECT count(*) AS n FROM oauth_states WHERE id LIKE 'expired-%'").first()).n,25);
  assert.equal(await db.prepare("SELECT id FROM rate_limits WHERE id='expired-rate'").first(),null);
+ assert.equal((await db.prepare("SELECT count(*) AS n FROM artist_search_cache WHERE query LIKE 'expired-cache-%'").first()).n,25);
 });
 
 test('feedback rejects a missing or malformed member identifier without server errors',async()=>{
@@ -211,4 +213,40 @@ test('Spotify summary import validates input, isolates private counts, and coexi
   assert.equal((await request('/api/music/spotify',{member:a,method:'POST',body:{artists}})).status,400);
  }
  assert.equal((await request('/api/music/spotify',{member:a,method:'POST',body:{artists:[],extra:'x'.repeat(130000)}})).status,413);
+});
+
+const searchRequest=(instance,member,q)=>instance.fetch(new Request(origin+'/api/artists/search?q='+encodeURIComponent(q),{headers:member?{Cookie:member.cookie}:{}}),env,{});
+const artistReply=()=>Response.json({artists:[{id:'12345678-1234-1234-1234-123456789abc',name:'Hidden Artist',score:100,type:'Person'}]});
+test('artist search requires membership, validates queries, shares normalized cache, and limits each member',async()=>{
+ const a=await login('130'),b=await login('131');let calls=0;const searches=[];
+ const instance=createApp({fetcher:async(url,options)=>{calls++;searches.push({url,options});return artistReply();}});
+ assert.equal((await searchRequest(instance,null,'Hidden')).status,401);
+ for(const q of ['','x','x'.repeat(81),'abc\nxyz'])assert.equal((await searchRequest(instance,a,q)).status,400);
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+ const first=await searchRequest(instance,a,'Hidden');assert.equal(first.status,200);assert.equal((await first.json()).source,'MusicBrainz');
+ assert.equal((await searchRequest(instance,b,'  HIDDEN  ')).status,200);assert.equal(calls,1);
+ assert.ok(searches[0].url.startsWith('https://musicbrainz.org/ws/2/artist/'));assert.ok(!searches[0].url.includes(a.user.id));assert.equal(searches[0].options.headers.Cookie,undefined);
+ assert.equal((await db.prepare('SELECT expires_at FROM artist_search_cache WHERE query=?').bind('hidden').first()).expires_at>Date.now()+6*86400000,true);
+ for(let n=0;n<29;n++)assert.equal((await searchRequest(instance,a,'Hidden')).status,200);
+ assert.equal((await searchRequest(instance,a,'Hidden')).status,429);assert.equal(calls,1);
+});
+test('artist provider slots are spaced across app instances and reject an excessive queue',async()=>{
+ const member=await login('132'),times=[];const fetcher=async()=>{times.push(Date.now());return artistReply();};
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+ const responses=await Promise.all([searchRequest(createApp({fetcher}),member,'Queue One'),searchRequest(createApp({fetcher}),member,'Queue Two')]);
+ assert.ok(responses.every(r=>r.status===200));assert.equal(times.length,2);assert.ok(times[1]-times[0]>=1000);
+ const future=Date.now()+10000;await db.prepare("UPDATE rate_limits SET expires_at=? WHERE id='artist-provider'").bind(future).run();
+ const busy=await searchRequest(createApp({fetcher}),member,'Queue Three');assert.equal(busy.status,429);assert.equal(busy.headers.get('Retry-After'),'2');assert.equal(times.length,2);
+ assert.equal((await db.prepare("SELECT expires_at FROM rate_limits WHERE id='artist-provider'").first()).expires_at,future);
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+});
+test('artist provider failures and timeouts are honest and never stored as successful cache entries',{timeout:15000},async()=>{
+ const member=await login('133');
+ const failure=createApp({fetcher:async()=>new Response('private upstream body',{status:503,headers:{'Retry-After':'3'}})});
+ const response=await searchRequest(failure,member,'Provider Failure');assert.equal(response.status,503);assert.equal(response.headers.get('Retry-After'),'3');assert.ok(!(await response.text()).includes('private upstream'));
+ assert.equal(await db.prepare('SELECT query FROM artist_search_cache WHERE query=?').bind('provider failure').first(),null);
+ await db.prepare("DELETE FROM rate_limits WHERE id='artist-provider'").run();
+ const hanging=createApp({fetcher:()=>new Promise(()=>{})});
+ const timedOut=await searchRequest(hanging,member,'Provider Timeout');assert.equal(timedOut.status,504);assert.equal((await timedOut.json()).error.code,'TIMEOUT');
+ assert.equal(await db.prepare('SELECT query FROM artist_search_cache WHERE query=?').bind('provider timeout').first(),null);
 });

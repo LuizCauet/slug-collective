@@ -1,3 +1,4 @@
+import {searchArtists,ArtistSearchError} from './artist-search.js';
 import {connectListenBrainz,syncListenBrainz,MusicError} from './music.js';
 const DAY=86400000,MAX_BODY=32000;
 const ROLE_SET=new Set(['Bass','DJ','Design','Drums','Film','Guitar','Illustration','Keys','Photography','Production','Songwriting','Vocals','Writing']);
@@ -30,7 +31,7 @@ function configured(env){return !!(env.DISCORD_CLIENT_ID&&env.DISCORD_CLIENT_SEC
 async function cleanupExpired(db){
  const now=Date.now();
  // Bound each pass; stale records are removed gradually without long request locks.
- await db.batch(['oauth_states','sessions','rate_limits'].map(table=>db.prepare(`DELETE FROM ${table} WHERE id IN (SELECT id FROM ${table} WHERE expires_at<=? LIMIT 100)`).bind(now)));
+ await db.batch([...['oauth_states','sessions','rate_limits'].map(table=>db.prepare(`DELETE FROM ${table} WHERE id IN (SELECT id FROM ${table} WHERE expires_at<=? LIMIT 100)`).bind(now)),db.prepare('DELETE FROM artist_search_cache WHERE query IN (SELECT query FROM artist_search_cache WHERE expires_at<=? LIMIT 100)').bind(now)]);
 }
 export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not found',{status:404})}={}){
  let nextCleanup=0;
@@ -72,6 +73,21 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
   if(mutation)await rate(db,`write:${uid}`,120,60000);
   if(path==='/api/logout'&&method==='POST'){await run(db,'DELETE FROM sessions WHERE id=?',u.session_id);return json({ok:true},200,{'Set-Cookie':cookie('slug_session','',req,0)});}
   if(path==='/api/me'&&method==='DELETE'){await run(db,'DELETE FROM users WHERE id=?',uid);return json({ok:true},200,{'Set-Cookie':cookie('slug_session','',req,0)});}
+  if(path==='/api/artists/search'){
+   if(method!=='GET')fail(405,'METHOD_NOT_ALLOWED','Method not allowed.');
+   const raw=url.searchParams.get('q')||'',query=raw.normalize('NFKC').replace(/\s+/g,' ').trim();
+   if(/[\u0000-\u001f\u007f]/.test(raw)||query.length<2||query.length>80)fail(400,'INVALID_QUERY','Search using 2 to 80 characters.');
+   await rate(db,`artist-search:${uid}`,30,60000);
+   const key=query.toLowerCase(),cached=await get(db,'SELECT data FROM artist_search_cache WHERE query=? AND expires_at>?',key,Date.now());
+   if(cached)return json({artists:parse(cached.data),source:'MusicBrainz'});
+   const now=Date.now(),reservation=await get(db,'INSERT INTO rate_limits(id,count,expires_at) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET expires_at=MAX(rate_limits.expires_at,?)+1100 WHERE rate_limits.expires_at<=? RETURNING expires_at-1100 AS slot','artist-provider',now+1100,now,now+1500);
+   if(!reservation)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);
+   const wait=Math.max(0,reservation.slot-Date.now());if(wait>1500)throw new ArtistSearchError('PROVIDER_UNAVAILABLE','Artist search is busy. Please try again shortly.',429,2);
+   if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+   const artists=await searchArtists(query,{fetcher,userAgent:`SlugCollective/1.0 (${env.MUSIC_CONTACT_URL||env.APP_ORIGIN})`});
+   await run(db,'INSERT INTO artist_search_cache(query,data,expires_at) VALUES (?,?,?) ON CONFLICT(query) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at',key,JSON.stringify(artists),Date.now()+DAY*7);
+   return json({artists,source:'MusicBrainz'});
+  }
   if(path==='/api/members'&&method==='GET'){const rows=await all(db,'SELECT * FROM users WHERE id<>? AND id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id=?) AND id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id=?) ORDER BY created_at DESC LIMIT 2000',uid,uid,uid);return json({members:rows.map(row=>userView(row,env))});}
   if(path==='/api/profile'&&method==='PUT'){
    const b=await readBody(req),name=text(b.name,40,'Name',true),bio=text(b.bio??'',300,'Bio'),pronouns=text(b.pronouns??'',40,'Pronouns'),college=text(b.college??'',80,'College'),intent=text(b.intent??'',160,'Open to'),workTitle=text(b.workTitle??'',100,'Work title'),workUrl=text(b.workUrl??'',1000,'Work link');
@@ -124,6 +140,6 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
   }
   fail(404,'NOT_FOUND','Not found.');
  }
- return {async fetch(req,env,ctx){let response;try{response=await handle(req,env,ctx);}catch(e){if(e instanceof AppError||e instanceof MusicError)response=json({error:{code:e.code,message:e.message}},e.status,e.retryAfter?{'Retry-After':String(e.retryAfter)}:{});else{console.error('Request failed',e?.name||'Error');response=json({error:{code:'SERVER_ERROR',message:'Something went wrong. Please try again.'}},500);}}const headers=new Headers(response.headers);headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','same-origin');headers.set('X-Frame-Options','SAMEORIGIN');headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.discordapp.com data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");return new Response(response.body,{status:response.status,headers});}};
+ return {async fetch(req,env,ctx){let response;try{response=await handle(req,env,ctx);}catch(e){if(e instanceof AppError||e instanceof MusicError||e instanceof ArtistSearchError)response=json({error:{code:e.code,message:e.message}},e.status,e.retryAfter?{'Retry-After':String(e.retryAfter)}:{});else{console.error('Request failed',e?.name||'Error');response=json({error:{code:'SERVER_ERROR',message:'Something went wrong. Please try again.'}},500);}}const headers=new Headers(response.headers);headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','same-origin');headers.set('X-Frame-Options','SAMEORIGIN');headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.discordapp.com data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");return new Response(response.body,{status:response.status,headers});}};
 }
 export default createApp();
