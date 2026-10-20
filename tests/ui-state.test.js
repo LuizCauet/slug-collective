@@ -5,8 +5,8 @@ import {readFile} from 'node:fs/promises';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
 function harness(width=390,storage=new Map()){
  const node={addEventListener(){},classList:{toggle(){}},innerHTML:''};
- const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null};
- const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener(){}},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async path=>{state.calls.push(path);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
+ const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
+ const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
  const run=code=>vm.runInContext(code,context);
  context.onRender=()=>state.renders++;
@@ -112,4 +112,39 @@ test('public artist catalog is bounded and storage failure leaves in-memory sugg
  assert.equal(run('publicArtistCatalog.length'),500);assert.equal(JSON.parse(storage.get('slug-artist-catalog-v1')).length,500);
  run("localStorage.setItem=()=>{throw new Error('Unavailable')};rememberPublicArtists([{id:'offline',name:'Offline Musician',description:'Still available'}]);draft={artists:[]};artistQuery='offline'");
  assert.equal(run('artistSuggestions()[0].name'),'Offline Musician');
+});
+
+
+test('new accounts skip directory loading until artist onboarding is completed',async()=>{
+ const {run,state}=harness();state.apiHandler=async path=>path==='/api/config'?{discordConfigured:true}:{authenticated:true,csrf:'csrf',user:{id:'new',name:'New',artists:[],roles:[],onboardingCompleted:false}};
+ run('setCsrf=()=>{}');await run('boot()');
+ assert.equal(run('me.onboardingCompleted'),false);
+ assert.equal(state.calls.includes('/api/members'),false);
+});
+
+test('artist onboarding requires three distinct names and exposes a focused heading without navigation',()=>{
+ const {run}=harness();run("me={onboardingCompleted:false};draft={artists:['Clairo','clairo','Tirzah']};artistQuery=''");
+ assert.equal(run('onboardingArtistCount()'),2);
+ assert.match(run('artistOnboarding()'),/<main class="artist-onboarding">/);
+ assert.match(run('artistOnboarding()'),/id="onboarding-heading" tabindex="-1"/);
+ assert.match(run('artistOnboarding()'),/id="onboarding-submit" type="submit" disabled/);
+ assert.doesNotMatch(run('artistOnboarding()'),/<nav/);
+ run("draft.artists.push('Grouper')");assert.equal(run('onboardingArtistCount()'),3);
+ assert.doesNotMatch(run('artistOnboarding()'),/id="onboarding-submit" type="submit" disabled/);
+});
+
+test('onboarding saves artists before directory access and preserves draft after save failure',async()=>{
+ const {run,state}=harness();run("me={id:'new',onboardingCompleted:false};tab='onboarding';draft={artists:['Clairo','Tirzah','Grouper']};setCsrf=()=>{}");
+ const submit=state.listeners.submit[0],button={disabled:false,isConnected:false};
+ const event={target:{id:'onboarding-form',querySelector:()=>button},preventDefault(){}};
+ state.apiHandler=async()=>{throw new Error('Connection lost. Please try again.');};
+ await submit(event);
+ assert.equal(run('draft.artists.length'),3);assert.match(run('onboardingError'),/Connection lost/);
+ assert.equal(state.calls.includes('/api/members'),false);
+ state.apiHandler=async path=>path==='/api/onboarding'?{user:{id:'new',name:'New',artists:['Clairo','Tirzah','Grouper'],manualArtists:['Clairo','Tirzah','Grouper'],roles:[],onboardingCompleted:true}}:{members:[]};
+ await submit(event);
+ assert.equal(run('me.onboardingCompleted'),true);assert.equal(run('tab'),'people');
+ assert.deepEqual(state.calls.slice(-2),['/api/onboarding','/api/members']);
+ assert.equal(state.requests.at(-2).options.method,'POST');
+ assert.equal(state.requests.at(-2).options.body.artists.length,3);
 });

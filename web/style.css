@@ -54,3 +54,44 @@ body{font-size:15px}button,input,textarea,select{font-family:Arial,Helvetica,san
 @media(max-width:700px){.welcome-art{width:220px;margin-bottom:8px}.onboard-story .welcome-intro{margin:22px 0 8px}.onboard-story .welcome-intro h1{font-size:40px}.onboard-story{min-height:0}.brand .club-mark{width:40px;height:40px}}
 .artist-description{display:block!important;max-width:none!important;text-align:left!important;margin-top:4px;font-size:10px;color:var(--muted);font-weight:400;line-height:1.4}.artist-option>span{min-width:0;overflow-wrap:anywhere}.artist-option>small{flex-shrink:0}.artist-custom{border-top:1px solid #65507f;color:#d9c5ff}.artist-search-status{margin:9px 0 4px;font-size:10px}.artist-attribution{font-size:10px;color:#87838d;margin:0 0 16px}.artist-attribution a{text-decoration:none}.artist-attribution a:hover{text-decoration:underline}.artist-already-added{padding:0 12px}@media(max-width:700px){.onboard-story{text-align:center;align-items:center}.onboard-story>.brand{justify-content:center}.onboard-story>div{width:100%}.onboard-story h1{margin-left:auto;margin-right:auto}.onboard-story .sub{margin-left:auto;margin-right:auto}.onboard-story>.small{text-align:center}.onboard-story .art-stack{justify-content:center}}
 @media(max-width:700px){.onboard-story .welcome-art{margin-left:auto;margin-right:auto}.onboard-story .sub{display:block;max-width:330px}.onboard-story>.brand{width:100%}}
+
+/* First visit: one focused artist picker, before the member navigation. */
+.artist-onboarding{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:48px 24px;background:var(--bg)}
+.artist-onboarding-panel{width:100%;max-width:640px;margin:0;padding:36px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.artist-onboarding-panel>.brand{width:fit-content;max-width:100%;margin:0 0 36px;gap:11px}
+.artist-onboarding-panel>.brand .club-mark{width:42px;height:42px}
+.artist-onboarding-panel>h1{font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:1.15;font-weight:750;letter-spacing:-1px;margin:0 0 12px}
+.artist-onboarding-panel>h1 em{color:var(--lime);font-style:normal;font-weight:inherit}
+.artist-onboarding-panel>p{font-size:14px;line-height:1.6;color:var(--muted);margin:0 0 28px;max-width:490px}
+#onboarding-form{display:block;width:100%;margin:0}
+.artist-onboarding #picker{width:100%;min-width:0}
+.artist-onboarding #picker>label{margin:0 0 10px;color:var(--ink);font-size:13px;font-weight:600}
+.artist-onboarding .artist-search{display:flex;align-items:center;gap:10px;width:100%;margin:0;min-height:48px;padding:0 13px;background:var(--bg);border:1px solid #55515a;border-radius:5px}
+.artist-onboarding .artist-search:focus-within{border-color:var(--purple);outline:2px solid var(--purple);outline-offset:2px}
+.artist-onboarding .artist-search>svg{width:18px;color:var(--muted)}
+.artist-onboarding .artist-search input{font-size:16px;min-height:46px;border:0;background:transparent;padding:12px 0;outline:0}
+.artist-onboarding .artist-results{width:100%;max-height:280px;overflow-y:auto;overscroll-behavior:contain}
+.artist-onboarding .artist-option{min-height:46px}
+.artist-onboarding .artist-search-status{min-height:16px;line-height:1.5;margin-top:10px}
+.artist-onboarding .artist-attribution{margin-bottom:18px;line-height:1.6}
+.artist-onboarding .artist-selected{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.artist-onboarding .artist-pill{max-width:100%;overflow-wrap:anywhere;white-space:normal;min-height:36px;background:#251b34;border:1px solid #76579e;color:#e1d1ff;border-radius:5px;padding:8px 11px;font-size:12px;text-align:left}
+.artist-onboarding .onboarding-progress{font-size:12px;font-weight:600;line-height:1.5;color:var(--purple);margin:20px 0 0}
+.artist-onboarding .onboarding-error{font-size:13px;line-height:1.5;color:#f7a5a5;margin:14px 0 0}
+.artist-onboarding .onboarding-error[hidden]{display:none}
+.onboarding-actions{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:24px;padding-top:24px;border-top:1px solid var(--line)}
+.onboarding-actions .primary{min-height:46px;min-width:160px;margin:0;font-size:14px;border-radius:5px}
+.onboarding-actions .primary:disabled{cursor:not-allowed;opacity:1;background:#343135;color:#aaa5af}
+.onboarding-actions .text-button{padding:10px 0;font-size:12px}
+@media(max-width:700px){
+ .artist-onboarding{align-items:flex-start;padding:24px 16px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+ .artist-onboarding-panel{max-width:640px;padding:26px 20px;border-radius:8px}
+ .artist-onboarding-panel>.brand{margin-bottom:30px;font-size:17px}
+ .artist-onboarding-panel>h1{font-size:29px;letter-spacing:-.7px}
+ .artist-onboarding-panel>p{font-size:13px;margin-bottom:24px}
+ .artist-onboarding .artist-results{max-height:34dvh}
+ .artist-onboarding .artist-option{padding-top:12px;padding-bottom:12px}
+ .onboarding-actions{gap:12px;justify-content:center;margin-top:22px;padding-top:20px}
+ .onboarding-actions .primary{width:100%;min-height:48px}
+ .onboarding-actions .text-button{padding:8px 12px}
+}
