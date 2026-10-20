@@ -15,13 +15,14 @@ async function request(path,{member,method='GET',body,csrf=true,originHeader=ori
  const response=await app.fetch(new Request(origin+path,{method,headers,...(body!==undefined?{body:JSON.stringify(body)}:{})}),env,{});
  return response;
 }
-async function login(discordId,{invite='secret-club-invite'}={}){
+async function login(discordId,{invite='secret-club-invite',completed=true}={}){
  accounts.set(discordId,{id:discordId,username:`slug${discordId}`,global_name:`Member ${discordId}`});
  const start=await app.fetch(new Request(origin+'/auth/discord'+(invite?`?invite=${invite}`:''),{headers:{'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  const state=new URL(start.headers.get('Location')).searchParams.get('state');
  const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}&code=${discordId}`,{headers:{Cookie:jar(start),'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  if(!jar(response))return {response};
  const cookie=jar(response),me=await (await app.fetch(new Request(origin+'/api/me',{headers:{Cookie:cookie}}),env,{})).json();
+ if(completed){await db.prepare('UPDATE users SET onboarding_completed_at=COALESCE(onboarding_completed_at,?) WHERE id=?').bind(Date.now(),me.user.id).run();me.user.onboardingCompleted=true;}
  return {response,cookie,csrf:me.csrf,user:me.user};
 }
 const profile=(extra={})=>({name:'A Slug',bio:'',pronouns:'',college:'',roles:[],intent:'',openToCollaborating:false,artists:['Clairo'],workTitle:'',workUrl:'',...extra});
@@ -30,6 +31,7 @@ before(async()=>{
  db=await mf.getD1Database('DB');
  for(const name of (await readdir(new URL('../drizzle/',import.meta.url))).filter(n=>n.endsWith('.sql')).sort()){
   const sql=await readFile(new URL('../drizzle/'+name,import.meta.url),'utf8');
+  if(sql.includes('ADD `onboarding_completed_at`')||sql.includes('ADD COLUMN `onboarding_completed_at`'))await db.prepare("INSERT INTO users(id,discord_id,name,created_at,updated_at) VALUES ('grandfathered','999','Existing Slug',0,0)").run();
   for(const statement of sql.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(statement).run();
  }
  env={DB:db,APP_ORIGIN:origin,DISCORD_CLIENT_ID:'test-client',DISCORD_CLIENT_SECRET:'test-secret',INITIAL_INVITE_CODE:'secret-club-invite',ADMIN_DISCORD_IDS:'100'};
@@ -277,4 +279,22 @@ test('complete artist names reuse fresh shared results without starving partial 
  assert.equal((await searchRequest(instance,member,'xaviersobased')).status,200);assert.equal(calls,3);
  // SQL wildcard/operator characters are literal values, never interpolated query code.
  assert.equal((await searchRequest(instance,member,"%' OR 1=1 --")).status,200);assert.equal(calls,4);
+});
+
+test('new members complete onboarding once while existing members are grandfathered',async()=>{
+ const old=await db.prepare("SELECT onboarding_completed_at FROM users WHERE id='grandfathered'").first();assert.ok(old.onboarding_completed_at>0);
+ const member=await login('136',{completed:false}),observer=await login('137');assert.equal(member.user.onboardingCompleted,false);
+ const before=await request('/api/members',{member});assert.equal(before.status,403);assert.equal((await before.json()).error.code,'ONBOARDING_REQUIRED');
+ assert.ok(!(await (await request('/api/members',{member:observer})).json()).members.some(m=>m.id===member.user.id));
+ assert.equal((await request('/api/onboarding',{method:'POST',body:{artists:['One','Two','Three']}})).status,401);
+ assert.equal((await request('/api/onboarding',{member,method:'POST',body:{artists:['One','Two','Three']},csrf:false})).status,403);
+ assert.equal((await request('/api/onboarding',{member,method:'POST',body:{artists:['One','Two','Three']},originHeader:'https://evil.example'})).status,403);
+ for(const artists of [[],['One','Two'],['One','one','Ｏｎｅ'],null])assert.equal((await request('/api/onboarding',{member,method:'POST',body:{artists}})).status,400);
+ await request('/api/profile',{member,method:'PUT',body:profile({bio:'Keep my bio',roles:['Guitar'],openToCollaborating:true,artists:[]})});
+ const done=await request('/api/onboarding',{member,method:'POST',body:{artists:['One','Two','Three','one']}});assert.equal(done.status,200);
+ const user=(await done.json()).user;assert.equal(user.onboardingCompleted,true);assert.equal(user.bio,'Keep my bio');assert.deepEqual(user.roles,['Guitar']);assert.deepEqual(user.manualArtists,['one','Two','Three']);
+ assert.equal((await request('/api/members',{member})).status,200);
+ const refreshed=(await (await request('/api/me',{member})).json()).user;assert.equal(refreshed.onboardingCompleted,true);
+ const repeated=(await (await request('/api/onboarding',{member,method:'POST',body:{artists:['Different','Other','New']}})).json()).user;assert.deepEqual(repeated.manualArtists,user.manualArtists);
+ const visible=(await (await request('/api/members',{member:observer})).json()).members.find(m=>m.id===member.user.id);assert.ok(visible);assert.equal(visible.onboardingCompleted,undefined);
 });
