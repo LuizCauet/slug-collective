@@ -11,5 +11,11 @@
 
 The application asks only for Discord identify scope, not email, server access, or existing DMs. App invites are separate from the club Discord server invite. Invite access does not automatically verify continuing server membership.
 
+## Sharing member invites
+
+After signing in as an admin, open Profile → Manage invites and reports to create an invite. Newly created links use the short `/i/` path followed by a 16-character code, for example `https://beta.slugcollective.workers.dev/i/…`. They expire after 30 days and can be revoked from the admin controls before then. Treat the complete link as an access credential and share it only with intended club members.
+
+Existing `/?invite=…` links remain supported until their normal expiry or revocation. The bootstrap invite still uses the configured `INITIAL_INVITE_CODE`; short admin-created invites do not require changing Discord's OAuth callback URLs. Link previews show only the club name, description and logo. Invite codes are never placed in preview metadata or a canonical URL.
+
 Official reference: https://docs.discord.com/developers/topics/oauth2
 

@@ -2,7 +2,7 @@ import test, {before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, readdir} from 'node:fs/promises';
 import {Miniflare} from 'miniflare';
-import {createApp} from '../server/app.js';
+import {createApp,hash} from '../server/app.js';
 
 let mf, db, env, app;
 const origin='https://club.example';
@@ -87,7 +87,7 @@ test('conversations isolate members, deduplicate sends, preserve messages, and e
 });
 test('admin invites can be revoked and account deletion invalidates sessions',async()=>{
  const admin=await login('100');const made=await request('/api/admin/invites',{member:admin,method:'POST'});assert.equal(made.status,201);
- const invite=(await made.json()).invite,code=new URL(invite.url).searchParams.get('invite');
+ const invite=(await made.json()).invite,code=new URL(invite.url).pathname.slice(3);
  assert.ok((await login('107',{invite:code})).user);
  assert.equal((await request(`/api/admin/invites/${invite.id}`,{member:admin,method:'DELETE'})).status,200);
  assert.match((await login('108',{invite:code})).response.headers.get('Location'),/invite_required/);
@@ -297,4 +297,17 @@ test('new members complete onboarding once while existing members are grandfathe
  const refreshed=(await (await request('/api/me',{member})).json()).user;assert.equal(refreshed.onboardingCompleted,true);
  const repeated=(await (await request('/api/onboarding',{member,method:'POST',body:{artists:['Different','Other','New']}})).json()).user;assert.deepEqual(repeated.manualArtists,user.manualArtists);
  const visible=(await (await request('/api/members',{member:observer})).json()).members.find(m=>m.id===member.user.id);assert.ok(visible);assert.equal(visible.onboardingCompleted,undefined);
+});
+
+test('short invites use independent 96-bit tokens and preserve legacy registration and session strength',async()=>{
+ const admin=await login('100');assert.match(admin.cookie,/slug_session=[a-f0-9]{64}(?:;|$)/);
+ const response=await request('/api/admin/invites',{member:admin,method:'POST'});assert.equal(response.status,201);
+ const invite=(await response.json()).invite,url=new URL(invite.url);assert.equal(url.origin,origin);assert.match(url.pathname,/^\/i\/[A-Za-z0-9_-]{16}$/);
+ const code=url.pathname.slice(3),saved=await db.prepare('SELECT token_hash FROM invites WHERE id=?').bind(invite.id).first();assert.equal(saved.token_hash,await hash(code));assert.notEqual(saved.token_hash,code);
+ const landing=await request(url.pathname);assert.equal(landing.status,302);assert.equal(landing.headers.get('Location'),'/?invite='+code);
+ for(const path of ['/i/short','/i/'+'a'.repeat(17),'/i/'+'a'.repeat(15)+'!','/i/'])assert.equal((await request(path)).status,404);
+ assert.equal((await request(url.pathname,{method:'POST'})).status,405);
+ const legacy='a'.repeat(64);await db.prepare('INSERT INTO invites(id,token_hash,created_at,expires_at) VALUES (?,?,?,?)').bind('legacy-long-invite',await hash(legacy),Date.now(),Date.now()+60000).run();
+ assert.ok((await login('138',{invite:legacy})).user);
+ const start=await request('/auth/discord');assert.match(new URL(start.headers.get('Location')).searchParams.get('state'),/^[a-f0-9]{64}$/);
 });

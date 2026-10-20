@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
 function harness(width=390,storage=new Map()){
- const node={addEventListener(){},classList:{toggle(){}},innerHTML:''};
+ const node={addEventListener(){},classList:{toggle(){}},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
  const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
@@ -147,4 +147,22 @@ test('onboarding saves artists before directory access and preserves draft after
  assert.deepEqual(state.calls.slice(-2),['/api/onboarding','/api/members']);
  assert.equal(state.requests.at(-2).options.method,'POST');
  assert.equal(state.requests.at(-2).options.body.artists.length,3);
+});
+
+
+test('invite share panel presents an escaped full URL, expiry and explicit copy control',()=>{
+ const {run}=harness();
+ const html=run("inviteSharePanel({url:'https://club.example/i/0123456789abcdef?x=\"<&',expiresAt:Date.now()+30*86400000})");
+ assert.match(html,/Your club invite/);assert.match(html,/readonly/);assert.match(html,/type="button" data-action="copy-invite">Copy link/);
+ assert.match(html,/Expires in 30 days/);assert.match(html,/only shown once/);
+ assert.match(html,/&quot;&lt;&amp;/);
+});
+
+test('invite copy writes the full link or selects it when clipboard access fails',async()=>{
+ const {run,state}=harness();
+ run("toast=message=>globalThis.lastToast=message;document.querySelector('#invite-url').value='https://club.example/i/0123456789abcdef';globalThis.navigator={clipboard:{writeText:async value=>globalThis.copied=value}}");
+ await run('copyInviteLink()');assert.equal(run('copied'),'https://club.example/i/0123456789abcdef');assert.equal(run('lastToast'),'Invite link copied.');
+ run("navigator.clipboard.writeText=async()=>{throw new Error('Denied')}");
+ await run('copyInviteLink()');assert.equal(state.focused,true);assert.equal(state.selected,true);assert.match(run('lastToast'),/Copy it manually/);
+ state.selected=false;run('globalThis.navigator={}');await run('copyInviteLink()');assert.equal(state.selected,true);
 });

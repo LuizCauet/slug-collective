@@ -6,6 +6,7 @@ class AppError extends Error{constructor(status,code,message){super(message);thi
 const fail=(status,code,message)=>{throw new AppError(status,code,message);};
 const id=()=>crypto.randomUUID();
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+const inviteToken=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(12)))).replace(/\+/g,'-').replace(/\//g,'_');
 export async function hash(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),b=>b.toString(16).padStart(2,'0')).join('');}
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});
 const cookies=req=>Object.fromEntries((req.headers.get('Cookie')||'').split(';').map(s=>s.trim().split(/=(.*)/s)).filter(p=>p.length>1));
@@ -43,6 +44,11 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
    // Cloudflare replaces this header at its edge. Never use caller-controlled forwarding headers.
    const ip=req.headers.get('CF-Connecting-IP')||'local';
    await rate(db,`auth:${await hash(ip)}`,60,60000);
+  }
+  if(path.startsWith('/i/')){
+   if(!/^\/i\/[A-Za-z0-9_-]{16}$/.test(path))fail(404,'NOT_FOUND','Invite not found.');
+   if(method!=='GET')return json({error:{code:'METHOD_NOT_ALLOWED',message:'Method not allowed.'}},405,{Allow:'GET'});
+   return redirect('/?invite='+encodeURIComponent(path.slice(3)));
   }
   if(path==='/api/config')return json({discordConfigured:configured(env),siteOrigin:env.APP_ORIGIN||url.origin,clubName:'Slug Collective'});
   if(path==='/api/health')return json({ok:true,service:'slug-collective'});
@@ -146,7 +152,7 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
   if(path.startsWith('/api/admin/')){
    if(!isAdmin(u,env))fail(403,'FORBIDDEN','Admin access required.');
    if(path==='/api/admin/invites'&&method==='GET')return json({invites:await all(db,'SELECT id,created_at AS createdAt,expires_at AS expiresAt,revoked FROM invites ORDER BY created_at DESC')});
-   if(path==='/api/admin/invites'&&method==='POST'){const raw=token(),iid=id(),now=Date.now(),expires=now+DAY*30;await run(db,'INSERT INTO invites(id,token_hash,created_by,created_at,expires_at) VALUES (?,?,?,?,?)',iid,await hash(raw),uid,now,expires);return json({invite:{id:iid,url:`${env.APP_ORIGIN}/?invite=${raw}`,expiresAt:expires}},201);}
+   if(path==='/api/admin/invites'&&method==='POST'){const raw=inviteToken(),iid=id(),now=Date.now(),expires=now+DAY*30;await run(db,'INSERT INTO invites(id,token_hash,created_by,created_at,expires_at) VALUES (?,?,?,?,?)',iid,await hash(raw),uid,now,expires);return json({invite:{id:iid,url:`${env.APP_ORIGIN}/i/${raw}`,expiresAt:expires}},201);}
    const invitePath=path.match(/^\/api\/admin\/invites\/([^/]+)$/);if(invitePath&&method==='DELETE'){await run(db,'UPDATE invites SET revoked=1 WHERE id=?',invitePath[1]);return json({ok:true});}
    if(path==='/api/admin/reports'&&method==='GET')return json({reports:await all(db,'SELECT r.*,u.name AS memberName,p.name AS reporterName FROM reports r LEFT JOIN users u ON u.id=r.member_id LEFT JOIN users p ON p.id=r.reporter_id ORDER BY r.created_at DESC LIMIT 200')});
   }
