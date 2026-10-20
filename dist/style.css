@@ -32,3 +32,5 @@ body{font-size:15px}button,input,textarea,select{font-family:Arial,Helvetica,san
 .discord-link{text-decoration:none;color:var(--purple)}.discord-link:hover{background:#211a2c;color:#d9c5ff}@media(max-width:700px){.discord-link .club-prefix{display:none}.discord-link{font-size:10px}}
 
 .discord-link>span{white-space:nowrap}@media(min-width:701px){.discord-link{font-size:13px;gap:12px;padding-left:12px;padding-right:12px}}
+
+@media(min-width:701px){.sidebar nav{flex:1;min-height:0;display:flex;flex-direction:column}.sidebar nav .nav{flex-shrink:0}.sidebar nav .discord-link{margin-top:auto;margin-bottom:20px}.sidebar-foot{margin-top:0}}
