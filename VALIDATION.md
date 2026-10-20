@@ -18,3 +18,5 @@ Profile layout revision: app syntax passed; browser checked compact People/Creat
 Full-screen inbox revision: syntax passed; browser visually verified desktop edge-to-edge inbox, phone composer above bottom nav, and removal of profile filler text and sidebar location. Conversation list and messages have independent overflow.
 
 Mobile inbox navigation revision: syntax passed. Browser tested 12 demo conversations at 390px, scrolling to and opening the final conversation, back navigation preserving list position, composer visibility, and desktop split view.
+
+Likes revision: syntax passed. Browser verified Like/Unlike toggles count 0/1 and preserves liked state on refresh, including migration of previous Same reactions. Counts reflect local demo reactions only.
