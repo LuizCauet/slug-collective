@@ -14,3 +14,5 @@ Artist-search revision: five matching tests passed including community-frequency
 Compact discovery revision: eight tests passed (matching, post filtering/order, bundled cover files). Browser verified album covers, posting, reaction and post persistence, title search, contextual messaging, desktop and phone-width layouts. Fixed mobile navigation spacing found during visual QA. Apple catalog artwork is cached locally for 48 artists; quinn has a generic fallback. Temporary phone fixture removed before packaging.
 
 Profile layout revision: app syntax passed; browser checked compact People/Create intros, hero-free Inbox/Profile, redesigned profile saving and persistence after refresh, role selection, and 390px profile layout. Temporary phone fixture removed.
+
+Full-screen inbox revision: syntax passed; browser visually verified desktop edge-to-edge inbox, phone composer above bottom nav, and removal of profile filler text and sidebar location. Conversation list and messages have independent overflow.
