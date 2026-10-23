@@ -182,3 +182,29 @@ svg.ui-icon {stroke-width:1.5}
 
 /* Initial avatars keep the same footprint as Discord portrait images. */
 .thread>.avatar {flex:0 0 auto}
+
+/* Optional genre preferences use the same compact controls as artist choices. */
+.genre-editor{min-width:0}
+.genre-editor>h2{margin:0 0 18px}
+.genre-suggestions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}
+.genre-suggestions .chip{min-height:36px;padding:8px 12px;font-size:12px;line-height:1.4;white-space:normal;text-align:left;border-radius:5px}
+.genre-suggestions .chip[aria-pressed="true"]{background:#251b34;border-color:#9871ca;color:#e1d1ff}
+.genre-input-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:9px}
+.genre-input-row>label{grid-column:1/-1;margin:0;color:var(--ink);font-size:12px}
+.genre-input-row .field{min-width:0;width:100%;min-height:44px;margin:0;font-size:14px;background:#0a0a0a;border-radius:5px}
+.genre-input-row .secondary{min-height:44px;margin:0;padding:11px 16px;font-size:12px;border-radius:5px}
+.genre-selected{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.genre-selected .artist-pill{max-width:100%;min-height:36px;margin:0;white-space:normal;overflow-wrap:anywhere;text-align:left;background:#251b34;border:1px solid #76579e;color:#e1d1ff;border-radius:5px;padding:8px 11px;font-size:12px}
+.genre-count{font-size:11px;line-height:1.5;color:var(--muted);margin:12px 0 0}
+.artist-onboarding .genre-editor{margin-top:0}
+.artist-onboarding .genre-suggestions{gap:8px;margin-bottom:24px}
+.artist-onboarding .genre-suggestions .chip{min-height:38px}
+.artist-onboarding .genre-input-row .field{font-size:16px}
+.artist-onboarding .onboarding-actions .secondary{min-height:46px;border-radius:5px}
+@media(max-width:700px){
+ .genre-suggestions{gap:7px;margin-bottom:20px}
+ .genre-suggestions .chip{min-height:38px;padding:9px 11px}
+ .genre-input-row .field{font-size:16px}
+ .artist-onboarding .onboarding-actions .secondary{min-width:90px}
+ .artist-onboarding .onboarding-actions>.text-button{margin-left:auto}
+}

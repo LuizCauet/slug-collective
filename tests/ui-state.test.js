@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
+import {genreSuggestions} from '../web/genres.js';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
 function harness(width=390,storage=new Map()){
  const node={addEventListener(){},classList:{toggle(){}},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
- const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
+ const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
  const run=code=>vm.runInContext(code,context);
  context.onRender=()=>state.renders++;
@@ -138,6 +139,7 @@ test('onboarding saves artists before directory access and preserves draft after
  const submit=state.listeners.submit[0],button={disabled:false,isConnected:false};
  const event={target:{id:'onboarding-form',querySelector:()=>button},preventDefault(){}};
  state.apiHandler=async()=>{throw new Error('Connection lost. Please try again.');};
+ await submit(event);assert.equal(run('onboardingStep'),1);assert.equal(state.calls.length,0);
  await submit(event);
  assert.equal(run('draft.artists.length'),3);assert.match(run('onboardingError'),/Connection lost/);
  assert.equal(state.calls.includes('/api/members'),false);
@@ -207,4 +209,42 @@ test('Spotify import progress reports real file counts without inventing a perce
  assert.doesNotMatch(run("spotifyProgressText({phase:'reading',files:37,listens:12345})"),/%/);
  assert.match(run("spotifyProgressText({phase:'reading',files:18,percent:48.6})"),/49%/);
  assert.doesNotMatch(run("spotifyProgressText({phase:'reading',files:37,percent:101})"),/%/);
+});
+
+
+test('genres are normalized, limited to ten, and custom duplicates receive inline feedback',()=>{
+ const {run}=harness();run('draft={genres:[]}');
+ assert.equal(run("changeGenre('  UK   garage  ')"),true);assert.equal(run('draft.genres[0]'),'UK garage');
+ assert.equal(run("changeGenre('uk garage')"),false);assert.match(run('genreError'),/already selected/);
+ assert.equal(run("changeGenre('a'.repeat(41))"),false);assert.match(run('genreError'),/40 characters/);
+ run("draft.genres=Array.from({length:10},(_,i)=>'Genre '+i)");
+ assert.equal(run("changeGenre('One more')"),false);assert.match(run('genreError'),/up to 10/);
+ assert.equal(run("changeGenre('Genre 0',true)"),true);assert.equal(run('draft.genres.length'),9);
+ assert.equal(run("changeGenre('<custom>')"),true);assert.match(run('genreEditor()'),/&lt;custom&gt;/);
+});
+
+test('optional onboarding genres can go back without losing artists and skip sends an empty genre list',async()=>{
+ const {run,state}=harness();run("me={id:'new',onboardingCompleted:false};tab='onboarding';draft={artists:['Clairo','Tirzah','Grouper'],genres:['Shoegaze']};onboardingStep=1");
+ const html=run('artistOnboarding()');assert.match(html,/What genres are you into/);assert.match(html,/Skip for now/);assert.match(html,/aria-pressed="true"/);
+ const back={dataset:{action:'onboarding-back'},isConnected:false};
+ await state.listeners.click[0]({target:{closest:()=>back}});
+ assert.equal(run('onboardingStep'),0);assert.equal(run('draft.artists.length'),3);assert.equal(run('draft.genres[0]'),'Shoegaze');
+ run('onboardingStep=1');state.apiHandler=async path=>path==='/api/onboarding'?{user:{id:'new',name:'New',artists:['Clairo','Tirzah','Grouper'],genres:[],roles:[],onboardingCompleted:true}}:{members:[]};
+ await run('finishOnboarding(true)');
+ assert.equal(state.requests[0].path,'/api/onboarding');assert.equal(state.requests[0].options.body.genres.length,0);assert.equal(state.requests[0].options.body.artists.length,3);
+});
+
+test('genre input Enter never submits the parent form and retains other unsaved profile fields',async()=>{
+ const {run,state}=harness();run("tab='profile';draft={genres:[],artists:[],roles:[]};globalThis.fixtureForm={elements:Object.fromEntries(['name','bio','pronouns','college','intent','workTitle','workUrl'].map(k=>[k,{value:'unsaved '+k}]))};fixtureForm.elements.openToCollaborating={checked:false};globalThis.baseQuery=document.querySelector;document.querySelector=s=>s==='#profile-form'?fixtureForm:baseQuery(s)");
+ const keydown=state.listeners.keydown.at(-1);let prevented=0;
+ await keydown({target:{id:'genre-input',value:'Dream pop'},key:'Enter',preventDefault(){prevented++;}});
+ assert.equal(prevented,1);assert.equal(run('draft.name'),'unsaved name');assert.equal(run('draft.bio'),'unsaved bio');assert.equal(run('draft.genres[0]'),'Dream pop');assert.equal(state.requests.length,0);
+ await keydown({target:{id:'genre-input',value:''},key:'Enter',preventDefault(){prevented++;}});
+ assert.equal(prevented,2);assert.match(run('genreError'),/Enter a genre name/);assert.equal(state.requests.length,0);
+});
+
+test('member genres render escaped tags and completed accounts normalize missing genres without onboarding reset',()=>{
+ const {run}=harness();assert.match(run("memberGenres({genres:['Shoegaze','<unsafe>']})"),/Shoegaze/);assert.match(run("memberGenres({genres:['<unsafe>']})"),/&lt;unsafe&gt;/);
+ assert.equal(run("normalize({id:'existing',onboardingCompleted:true}).onboardingCompleted"),true);
+ assert.equal(run("normalize({id:'existing'}).genres.length"),0);
 });

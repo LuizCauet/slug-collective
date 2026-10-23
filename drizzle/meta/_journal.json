@@ -36,6 +36,13 @@
       "when": 1792489194796,
       "tag": "0004_yielding_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792796508592,
+      "tag": "0005_brainy_wiccan",
+      "breakpoints": true
     }
   ]
 }

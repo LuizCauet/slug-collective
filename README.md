@@ -20,11 +20,11 @@ The result is a focused product with two discovery modes: **People** for shared 
 
 | Flow | What members can do |
 | --- | --- |
-| **Join** | Sign in with Discord and a club invite, then choose at least three distinct artists during first-time setup. |
+| **Join** | Sign in with Discord and a club invite, choose at least three distinct artists, then optionally add genres during first-time setup. |
 | **People** | Browse profiles ranked by shared artists, search by name or music, and see concrete reasons for a connection. |
 | **Create** | Discover musicians, producers, photographers, designers, and other creatives; filter by role and explore collaboration interests. Participation is opt-in. |
 | **Inbox** | Start a conversation from an artist or creative project, with that context carried into a persistent private thread. |
-| **Profile** | Edit music and creative interests, import listening data, and manage account settings. |
+| **Profile** | Edit artists, optional genres and creative interests, import listening data, and manage account settings. |
 
 | First-time artist setup | Creative collaboration |
 | --- | --- |
@@ -48,6 +48,8 @@ artist weight = 1 + ln((community size + 1) / (artist listener count + 1))
 ```
 
 People ranking sums those contributions. Create also rewards predefined complementary role pairs, such as production and vocals. Names are normalized for case, Unicode, and whitespace; stable tie-breaking keeps ordering predictable.
+
+Members can select up to ten genres from suggestions or add custom names. Genres provide profile context; they do not change this baseline's matching weights.
 
 This favors meaningful niche overlap without hiding the reasoning. Recommendation feedback is stored for future evaluation. A next step is to compare this baseline against learned artist representations using opt-in relevance feedback and a defined evaluation protocol, rather than assume a more complex model is better.
 
