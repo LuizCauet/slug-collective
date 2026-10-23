@@ -1,4 +1,4 @@
-const icon=(name)=>{const paths={external:'<path d="M14 3h7v7M10 14 21 3M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6"/>',people:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m2-15a3 3 0 0 1 0 6m1 3a6 6 0 0 1 3 6"/>',create:'<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/>',inbox:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2v-9.5A8.5 8.5 0 0 1 10.5 4H13a8 8 0 0 1 8 7.5Z"/><path d="M7 10h9M7 14h6"/>',profile:'<circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/>',search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',arrow:'<path d="M5 12h14m-6-6 6 6-6 6"/>',music:'<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',send:'<path d="m3 3 18 9-18 9 4-9-4-9Zm4 9h14"/>',link:'<path d="m9 15 6-6m-7 4-2 2a4 4 0 0 0 6 6l3-3m1-7 2-2a4 4 0 0 0-6-6L9 6"/>'};return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]||paths.create}</svg>`;};
+const icon=(name)=>{const paths={check:'<path d="m5 12 4 4L19 6"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',external:'<path d="M14 3h7v7M10 14 21 3M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6"/>',people:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m2-15a3 3 0 0 1 0 6m1 3a6 6 0 0 1 3 6"/>',create:'<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/>',inbox:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2v-9.5A8.5 8.5 0 0 1 10.5 4H13a8 8 0 0 1 8 7.5Z"/><path d="M7 10h9M7 14h6"/>',profile:'<circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/>',search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',arrow:'<path d="M5 12h14m-6-6 6 6-6 6"/>',music:'<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',send:'<path d="m3 3 18 9-18 9 4-9-4-9Zm4 9h14"/>',link:'<path d="m9 15 6-6m-7 4-2 2a4 4 0 0 0 6 6l3-3m1-7 2-2a4 4 0 0 0-6-6L9 6"/>'};return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${(paths[name]||paths.create).replace(/<(path|circle|ellipse|rect|line|polyline|polygon)\b/g,'<$1 vector-effect="non-scaling-stroke"')}</svg>`;};
 const brand=()=>`<a class="brand" href="#" data-action="home" aria-label="Slug Collective home"><img class="club-mark" src="/assets/club-logo.png" alt="" width="44" height="44"><span>slug collective<small>UC SANTA CRUZ</small></span></a>`;
 import {api,setCsrf} from './api.js';
 import {rankMembers} from './matching.js';
@@ -140,5 +140,27 @@ function artistOnboarding(){const count=onboardingArtistCount();return `<main cl
 function updateOnboardingProgress(){const progress=document.querySelector('#onboarding-progress'),button=document.querySelector('#onboarding-submit');if(!progress||!button||me?.onboardingCompleted!==false)return;const count=onboardingArtistCount();progress.textContent=count+' / 3 artists';button.disabled=busy||count<3;}
 
 
-function inviteSharePanel(invite){const expires=Number.isFinite(Number(invite.expiresAt))?new Date(Number(invite.expiresAt)).toLocaleDateString():'';return `<section class="invite-share-panel" aria-label="Share your club invite"><label for="invite-url">Your club invite</label><div class="invite-share-controls"><input class="field" id="invite-url" readonly value="${esc(invite.url)}" aria-describedby="invite-share-note" spellcheck="false"><button class="primary" type="button" data-action="copy-invite">Copy link</button></div><p class="invite-expiry">Expires in 30 days${expires?' · '+esc(expires):''}</p><p class="invite-share-note" id="invite-share-note">Copy it now. This link is only shown once.</p></section>`;}
-async function copyInviteLink(){const input=document.querySelector('#invite-url');if(!input)return;try{if(!globalThis.navigator?.clipboard?.writeText)throw new Error('Clipboard unavailable');await navigator.clipboard.writeText(input.value);toast('Invite link copied.');}catch{input.focus();input.select();input.setSelectionRange?.(0,input.value.length);toast('Link selected. Copy it manually with your device’s copy command.');}}
+function inviteSharePanel(invite){const expires=Number.isFinite(Number(invite.expiresAt))?new Date(Number(invite.expiresAt)).toLocaleDateString():'';return `<section class="invite-share-panel" aria-label="Share your club invite"><label for="invite-url">Your club invite</label><div class="invite-share-controls"><input class="field" id="invite-url" readonly value="${esc(invite.url)}" aria-describedby="invite-share-note" spellcheck="false"><button class="primary" type="button" data-action="copy-invite"><span class="copy-icon-stack" aria-hidden="true"><span class="copy-icon-default">${icon('copy')}</span><span class="copy-icon-success">${icon('check')}</span></span><span class="copy-invite-label">Copy link</span></button></div><p class="invite-expiry">Expires in 30 days${expires?' · '+esc(expires):''}</p><p class="invite-share-note" id="invite-share-note">Copy it now. This link is only shown once.</p></section>`;}
+const inviteCopyFeedback=new WeakMap();
+async function copyInviteLink(){
+ const input=document.querySelector('#invite-url'),button=document.querySelector('[data-action="copy-invite"]');if(!input)return;
+ const state={timer:null};
+ if(button){const previous=inviteCopyFeedback.get(button);if(previous?.timer)clearTimeout(previous.timer);inviteCopyFeedback.set(button,state);}
+ const current=()=>button?.isConnected&&document.querySelector('[data-action="copy-invite"]')===button&&inviteCopyFeedback.get(button)===state;
+ const showCopied=copied=>{button.classList.toggle('is-copied',copied);const label=button.querySelector('.copy-invite-label');if(label)label.textContent=copied?'Copied':'Copy link';};
+ try{
+  if(!globalThis.navigator?.clipboard?.writeText)throw new Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(input.value);
+  if(current()){
+   // Both icons mount in their resting states; enable transitions only after
+   // an actual copy succeeds, then flush before changing their visibility.
+   button.classList.add('copy-state-ready');void button.offsetWidth;showCopied(true);
+   state.timer=setTimeout(()=>{if(current()){showCopied(false);inviteCopyFeedback.delete(button);}},2000);
+  }
+  toast('Invite link copied.');
+ }catch{
+  if(current()){showCopied(false);inviteCopyFeedback.delete(button);}
+  if(input.isConnected!==false){input.focus();input.select();input.setSelectionRange?.(0,input.value.length);}
+  toast('Link selected. Copy it manually with your device’s copy command.');
+ }
+}

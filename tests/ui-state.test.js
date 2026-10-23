@@ -153,7 +153,8 @@ test('onboarding saves artists before directory access and preserves draft after
 test('invite share panel presents an escaped full URL, expiry and explicit copy control',()=>{
  const {run}=harness();
  const html=run("inviteSharePanel({url:'https://club.example/i/0123456789abcdef?x=\"<&',expiresAt:Date.now()+30*86400000})");
- assert.match(html,/Your club invite/);assert.match(html,/readonly/);assert.match(html,/type="button" data-action="copy-invite">Copy link/);
+ assert.match(html,/Your club invite/);assert.match(html,/readonly/);assert.match(html,/type="button" data-action="copy-invite"/);assert.match(html,/class="copy-invite-label">Copy link/);
+ assert.match(html,/class="copy-icon-default"/);assert.match(html,/class="copy-icon-success"/);assert.doesNotMatch(html,/copy-state-ready|is-copied/);
  assert.match(html,/Expires in 30 days/);assert.match(html,/only shown once/);
  assert.match(html,/&quot;&lt;&amp;/);
 });
@@ -165,4 +166,32 @@ test('invite copy writes the full link or selects it when clipboard access fails
  run("navigator.clipboard.writeText=async()=>{throw new Error('Denied')}");
  await run('copyInviteLink()');assert.equal(state.focused,true);assert.equal(state.selected,true);assert.match(run('lastToast'),/Copy it manually/);
  state.selected=false;run('globalThis.navigator={}');await run('copyInviteLink()');assert.equal(state.selected,true);
+});
+
+test('icons use one currentColor outline style with constant rendered stroke widths',()=>{
+ const {run}=harness();
+ for(const name of ['people','create','inbox','profile','search','arrow','music','close','send','link','check','copy']){
+  const html=run(`icon('${name}')`);
+  assert.match(html,/class="ui-icon"/);assert.match(html,/fill="none" stroke="currentColor"/);
+  assert.match(html,/vector-effect="non-scaling-stroke"/);assert.match(html,/focusable="false"/);
+ }
+});
+
+test('invite copy success persists static feedback for two seconds and stale timers cannot reset newer feedback',async()=>{
+ const {run,state}=harness();
+ run(`globalThis.copyClasses=new Set();globalThis.copyLabel={textContent:'Copy link'};
+ globalThis.copyButton={isConnected:true,offsetWidth:100,classList:{add:name=>copyClasses.add(name),toggle:(name,enabled)=>enabled?copyClasses.add(name):copyClasses.delete(name)},querySelector:()=>copyLabel};
+ globalThis.copyInput={value:'https://club.example/i/test',focus(){},select(){}};
+ document.querySelector=selector=>selector==='#invite-url'?copyInput:selector==='[data-action="copy-invite"]'?copyButton:null;
+ globalThis.navigator={clipboard:{writeText:async()=>{}}};toast=()=>{};`);
+ assert.equal(run("copyClasses.has('copy-state-ready')"),false);
+ await run('copyInviteLink()');
+ assert.equal(run('copyLabel.textContent'),'Copied');assert.equal(run("copyClasses.has('is-copied')"),true);
+ assert.equal(state.timers[0].delay,2000);
+ const oldReset=state.timers[0].fn;
+ await run('copyInviteLink()');oldReset();
+ assert.equal(run('copyLabel.textContent'),'Copied','a stale reset must not clear the newest success');
+ state.timers.at(-1).fn();assert.equal(run('copyLabel.textContent'),'Copy link');assert.equal(run("copyClasses.has('is-copied')"),false);
+ await run('copyInviteLink()');run('copyButton.isConnected=false');state.timers.at(-1).fn();
+ assert.equal(run('copyLabel.textContent'),'Copied','detached buttons are never mutated by timers');
 });
