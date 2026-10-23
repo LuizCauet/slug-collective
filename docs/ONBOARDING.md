@@ -13,3 +13,9 @@ Existing accounts are grandfathered into the completed state when the requiremen
 The first-time flow asks only for music preferences. Creative roles, collaboration opt-in, biography and other profile details stay optional and available later. This keeps the first visit short while giving People matching enough information to begin.
 
 Genres add profile context. They do not change the current artist-based matching weights or the complementary-role score in Create.
+
+## Editing later
+
+Profile groups settings into About, Music, Create and Services. Only the chosen section is visible. Switching sections keeps unsaved edits in the shared draft; Save profile remains the explicit persistence action. Services contains listening imports and account or administrator actions, separate from music preferences.
+
+Genre suggestions appear as compact selectable chips. An “Add custom genre” chip opens a small inline input with Add and Cancel controls. The custom input is hidden until requested, in both onboarding and Profile. Selected suggested genres stay marked in the list; custom genres have removable pills. The ten-genre limit still applies to the combined selection.

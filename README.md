@@ -24,7 +24,7 @@ The result is a focused product with two discovery modes: **People** for shared 
 | **People** | Browse profiles ranked by shared artists, search by name or music, and see concrete reasons for a connection. |
 | **Create** | Discover musicians, producers, photographers, designers, and other creatives; filter by role and explore collaboration interests. Participation is opt-in. |
 | **Inbox** | Start a conversation from an artist or creative project, with that context carried into a persistent private thread. |
-| **Profile** | Edit artists, optional genres and creative interests, import listening data, and manage account settings. |
+| **Profile** | Switch between About, Music, Create and Services to edit preferences and manage imports or account settings. Genres are optional; custom entry opens only when needed. |
 
 | First-time artist setup | Creative collaboration |
 | --- | --- |

@@ -37,6 +37,19 @@ The review uses the `better-ui` skill and clear technical English (`ste`). It co
 | --- | --- | --- | --- | --- |
 | MEDIUM — resolved in source | `web/app.js:1`, `web/style.css:159` | One stroke width scaled down with every SVG, including icons beside bold labels. | A single currentColor SVG factory uses non-scaling strokes. CSS selects 1.5px, 2px, or 2.5px strokes for the corresponding contexts. | Icon strokes track adjacent text weight and remain stable at smaller render sizes. |
 
+## Profile sections and custom genres
+
+Verified in an isolated local browser preview: desktop section navigation, a 390px mobile layout, a 200-artist collapsed import, custom genre add with Enter, Escape returning focus to its trigger, and edits surviving section changes, saving and refresh. No browser console errors were observed. The full suite passes all 96 tests. Live deployment remains pending user approval.
+
+| Severity | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| MEDIUM — resolved | `web/style.css:212`, `web/style.css:220` | Profile placed identity, music, creative settings and services in one long editor. | A compact identity header sits above About, Music, Create and Services buttons. One section is visible at a time. Controls use the existing radius tokens and palette; narrow screens use a two-column navigation grid. | Consistent surfaces keep the focused section clear without changing the club's visual style. Section switches are immediate and introduce no animation. |
+| LOW — resolved | `web/style.css:236`, `web/style.css:240` | A custom-genre text field stayed visible even when members only wanted suggested genres. | An Add custom genre chip opens a small inline panel. Add and Cancel share a compact row; on narrow phones the input occupies its own full-width row. | The occasional input stays available without crowding routine genre choices. It remains in page flow, so it cannot cover onboarding actions. |
+
+This revision adds no animations, nested forms, or dialogs. Source inspection confirms that section-button feedback has no transition, hover styles require a hover-capable pointer, and existing onboarding controls remain in normal document flow. The JavaScript agent owns draft preservation, focus handling and panel insertion; their behavior requires the combined tests and browser check.
+
+Animation replay at 10% speed, physical touch behavior and the operating-system reduced-motion setting remain **Not verified**. No new motion requires separate replay. Parent-task browser checks will be recorded after the combined implementation is built.
+
 ## Verification and limits
 
 Confirmed by source inspection: hover guards; independent focus feedback; disabled/selected styles; named transition properties; reduced-motion branches; exact press and copy-transition values; first-render suppression; neutral image outlines; scroll containment; icon color and stroke geometry. Source inspection also confirmed that later mobile inbox rules retain the full conversation list and separate open-chat state. Legacy selectors remain; this review did not remove them or change application behavior.

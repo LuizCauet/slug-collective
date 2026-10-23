@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {genreSuggestions} from '../web/genres.js';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
 function harness(width=390,storage=new Map()){
- const node={addEventListener(){},classList:{toggle(){}},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
+ const node={addEventListener(){},classList:{toggle(){},add(){},remove(){}},setAttribute(){},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
  const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
@@ -247,4 +247,43 @@ test('member genres render escaped tags and completed accounts normalize missing
  const {run}=harness();assert.match(run("memberGenres({genres:['Shoegaze','<unsafe>']})"),/Shoegaze/);assert.match(run("memberGenres({genres:['<unsafe>']})"),/&lt;unsafe&gt;/);
  assert.equal(run("normalize({id:'existing',onboardingCompleted:true}).onboardingCompleted"),true);
  assert.equal(run("normalize({id:'existing'}).genres.length"),0);
+});
+
+test('profile shows one pane and section navigation retains hidden draft values and artist query',()=>{
+ const {run}=harness();run("me=normalize({id:'me',name:'Me',bio:'Saved bio',artists:['Tirzah'],roles:['Production'],genres:['Shoegaze'],intent:'Original intent',workTitle:'Original work',openToCollaborating:true});draft=createDraft(me);tab='profile';profileSection='about';artistQuery='Grouper'");
+ const html=run('profile()');assert.match(html,/aria-label="Profile sections"/);assert.doesNotMatch(html,/role="tablist"/);assert.match(html,/name="name"/);assert.doesNotMatch(html,/id="artist-search"|id="creative-toggle"|Connect services/);
+ run("globalThis.fixtureForm={elements:{name:{value:'Edited name'},bio:{value:'Edited bio'}}};globalThis.baseQuery=document.querySelector;document.querySelector=s=>s==='#profile-form'?fixtureForm:baseQuery(s);switchProfileSection('music')");
+ assert.equal(run('draft.name'),'Edited name');assert.equal(run('draft.bio'),'Edited bio');assert.equal(run('draft.workTitle'),'Original work');assert.equal(run('draft.openToCollaborating'),true);assert.equal(run('artistQuery'),'Grouper');
+ assert.equal(run('draft.genres[0]'),'Shoegaze');
+ run("fixtureForm.elements={intent:{value:'New intent'},openToCollaborating:{checked:false}};switchProfileSection('services')");
+ assert.equal(run('draft.intent'),'New intent');assert.equal(run('draft.name'),'Edited name');assert.equal(run('draft.openToCollaborating'),false);assert.match(run('profilePane(draft)'),/Connect services/);assert.doesNotMatch(run('profilePane(draft)'),/id="artist-search"|id="genre-editor"/);
+});
+
+test('custom genre editor starts collapsed and selected suggestion genres are not duplicated as removable pills',()=>{
+ const {run}=harness();run("draft={genres:['Shoegaze','Custom scene']};genreCustomOpen=false;tab='profile'");
+ const html=run('genreEditor()');assert.match(html,/Add custom genre/);assert.match(html,/aria-expanded="false"/);assert.doesNotMatch(html,/id="genre-input"/);
+ assert.doesNotMatch(html,/data-action="genre-remove" data-genre="Shoegaze"/);assert.match(html,/data-action="genre-remove" data-genre="Custom scene"/);
+ run('genreCustomOpen=true');const open=run('genreEditor()');assert.match(open,/Genre name/);assert.match(open,/id="genre-input" maxlength="40"/);assert.doesNotMatch(open,/placeholder=/);
+});
+
+test('adding a custom genre closes its editor while Escape and Cancel preserve all selected choices',async()=>{
+ const {run,state}=harness();run("draft={genres:['Shoegaze'],artists:[]};genreCustomOpen=true;genreQuery='';globalThis.baseQuery=document.querySelector;document.querySelector=s=>{const node=baseQuery(s);if(s==='#genre-input')node.value='Dreampunk';return node;}");
+ run('addCustomGenre()');assert.equal(run('genreCustomOpen'),false);assert.equal(run('draft.genres[1]'),'Dreampunk');assert.equal(state.focused,true);
+ run("genreCustomOpen=true;genreQuery='Unsubmitted'");let prevented=false,stopped=false;
+ await state.listeners.keydown.at(-1)({target:{id:'genre-input'},key:'Escape',preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+ assert.equal(prevented,true);assert.equal(stopped,true);assert.equal(run('genreCustomOpen'),false);assert.equal(run('genreQuery'),'');assert.equal(run('draft.genres.length'),2);
+ run("genreCustomOpen=true;genreQuery='Other draft'");const cancel={dataset:{action:'genre-custom-cancel'},isConnected:false};await state.listeners.click[0]({target:{closest:()=>cancel}});
+ assert.equal(run('genreCustomOpen'),false);assert.equal(run('draft.genres.length'),2);assert.equal(state.requests.length,0);
+});
+
+test('saving from a profile pane submits the complete draft including fields absent from that pane',async()=>{
+ const {run,state}=harness();run("me=normalize({id:'me',name:'Keep name',bio:'Keep bio',artists:['Tirzah'],manualArtists:['Tirzah'],roles:['Production'],genres:['Shoegaze'],intent:'Keep intent',workTitle:'Keep work',workUrl:'https://example.com/work',openToCollaborating:true});draft=createDraft(me);tab='profile';profileSection='music';globalThis.fixtureForm={elements:{}};globalThis.baseQuery=document.querySelector;document.querySelector=s=>s==='#profile-form'?fixtureForm:baseQuery(s)");
+ state.apiHandler=async(path,options)=>({user:{id:'me',...options.body,manualArtists:options.body.artists}});
+ const button={isConnected:false};await state.listeners.submit[0]({target:{id:'profile-form',querySelector:()=>button},preventDefault(){}});
+ const body=state.requests[0].options.body;assert.equal(body.name,'Keep name');assert.equal(body.bio,'Keep bio');assert.equal(body.intent,'Keep intent');assert.equal(body.roles[0],'Production');assert.equal(body.genres[0],'Shoegaze');assert.equal(body.workTitle,'Keep work');assert.equal(body.openToCollaborating,true);
+});
+
+test('large Spotify imports remain collapsed behind a compact source summary',()=>{
+ const {run}=harness();run("me={artists:[],manualArtists:[],spotify:{artists:Array.from({length:200},(_,i)=>({name:'Artist '+i}))}};");
+ const html=run('importedArtists()');assert.match(html,/<details class="imported-source"><summary>Spotify · 200 artists/);assert.doesNotMatch(html,/<details[^>]* open/);assert.match(html,/\+188 more/);
 });
