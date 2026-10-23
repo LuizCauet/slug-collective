@@ -96,3 +96,41 @@ test('truncated ZIP never imports a partial profile',async()=>{
   const truncated=new File([await archive.slice(0,archive.size-22).arrayBuffer()],'truncated.zip');
   await rejects(parseSpotifyFiles([truncated]),'INVALID_ZIP');
 });
+
+test('37 history files exceeding the old 128 MiB expanded cap import completely with bounded per-file buffers',async()=>{
+  const parts=[];
+  const archive=new Zip((error,chunk)=>{if(error)throw error;parts.push(chunk);});
+  const padding=' '.repeat(4*1024*1024);
+  let expanded=0;
+  // Generate and compress one JSON at a time. Retain only the small compressed
+  // ZIP chunks, never 37 expanded JSON strings or parsed record arrays.
+  for(let index=0;index<37;index++){
+    const entry=new ZipDeflate(`Spotify Extended Streaming History/Streaming_History_Audio_2025_${index}.json`);
+    archive.add(entry);
+    const bytes=strToU8(JSON.stringify([row(`Niche artist ${index}`,{padding})]));
+    expanded+=bytes.byteLength;entry.push(bytes,true);
+  }
+  archive.end();
+  assert.ok(expanded>128*1024*1024);
+  const archiveFile=new File(parts,'spotify-history-37-files.zip');
+  assert.ok(archiveFile.size<1024*1024,'fixture retains a small compressed archive, not all expanded files');
+  const completed=[];
+  const result=await parseSpotifyFiles([archiveFile],{onProgress:progress=>{if(progress.phase==='reading')completed.push(progress.files);}});
+  assert.equal(completed.length,37);assert.equal(completed.at(-1),37);
+  assert.equal(result.summary.listens,37);assert.equal(result.summary.artistCount,37);
+  assert.equal(result.artists.length,37);
+  assert.equal(result.artists.reduce((sum,artist)=>sum+artist.plays,0),37);
+});
+
+test('limit errors report the measured size and configured limit instead of silently importing part of an archive',async()=>{
+  const archive=zip({'StreamingHistory0.json':[row('First')],'StreamingHistory1.json':[row('Second')]});
+  await assert.rejects(parseSpotifyFiles([archive],{limits:{expandedBytes:150}}),error=>error.code==='EXPANSION_LIMIT'&&error.message.includes('150 bytes')&&error.message.includes('Nothing was imported'));
+  await assert.rejects(parseSpotifyFiles([file([row()])],{limits:{inputBytes:1}}),error=>error.code==='INPUT_TOO_LARGE'&&error.message.includes('1 byte')&&error.message.includes('Selected files total'));
+});
+
+test('distinct-artist limit rejects a new artist before insertion while repeated artists remain valid',async()=>{
+  const repeated=await parseSpotifyFiles([file([row('First'),row('Second'),row('  FIRST  '),row('Second')])],{limits:{artists:2}});
+  assert.equal(repeated.summary.artistCount,2);assert.equal(repeated.summary.listens,4);
+  assert.deepEqual(repeated.artists.map(artist=>artist.plays),[2,2]);
+  await assert.rejects(parseSpotifyFiles([file([row('First'),row('Second'),row('FIRST'),row('Third')])],{limits:{artists:2}}),error=>error.code==='ARTIST_LIMIT'&&error.message.includes('2 distinct-artist limit')&&error.message.includes('Nothing was imported'));
+});

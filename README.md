@@ -122,7 +122,7 @@ Deployment requires authorization to the intended Cloudflare account. Follow the
 
 ## Validation and current scope
 
-The current suite contains **80 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
+The current suite contains **85 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
 
 Browser checks additionally cover the onboarding-to-discovery flow and persistence after refresh. Automated UI state tests are not a full browser end-to-end suite.
 

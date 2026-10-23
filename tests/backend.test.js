@@ -229,8 +229,12 @@ test('artist search requires membership, validates queries, shares normalized ca
  assert.equal((await searchRequest(instance,b,'  HIDDEN  ')).status,200);assert.equal(calls,1);
  assert.ok(searches[0].url.startsWith('https://musicbrainz.org/ws/2/artist/'));assert.ok(!searches[0].url.includes(a.user.id));assert.equal(searches[0].options.headers.Cookie,undefined);
  assert.equal((await db.prepare('SELECT expires_at FROM artist_search_cache WHERE query=?').bind('hidden').first()).expires_at>Date.now()+6*86400000,true);
- for(let n=0;n<89;n++)assert.equal((await searchRequest(instance,a,'Hidden')).status,200);
- assert.equal((await searchRequest(instance,a,'Hidden')).status,429);assert.equal(calls,1);
+ // Seed the boundary instead of spending real time crossing a fixed-minute window.
+ // Both adjacent buckets cover a request that lands exactly on the next minute.
+ const now=Date.now(),bucket=Math.floor(now/60000);
+ await db.batch([bucket,bucket+1].map(slot=>db.prepare('INSERT INTO rate_limits(id,count,expires_at) VALUES (?,90,?) ON CONFLICT(id) DO UPDATE SET count=90,expires_at=excluded.expires_at').bind(`artist-search:${a.user.id}:${slot}`,now+180000)));
+ const limited=await searchRequest(instance,a,'Hidden');assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('Retry-After'))>=1);
+ assert.equal((await searchRequest(instance,b,'Hidden')).status,200);assert.equal(calls,1);
 });
 test('artist provider slots are spaced across app instances and reject an excessive queue',async()=>{
  const member=await login('132'),times=[];const fetcher=async()=>{times.push(Date.now());return artistReply();};

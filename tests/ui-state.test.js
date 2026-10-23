@@ -195,3 +195,16 @@ test('invite copy success persists static feedback for two seconds and stale tim
  await run('copyInviteLink()');run('copyButton.isConnected=false');state.timers.at(-1).fn();
  assert.equal(run('copyLabel.textContent'),'Copied','detached buttons are never mutated by timers');
 });
+
+test('Spotify export help qualifies the one-day estimate and keeps the direct privacy link',()=>{
+ const {run}=harness();run('draft={provider:null};me={}');
+ const html=run('serviceControls()');assert.match(html,/may arrive in about a day/);assert.match(html,/up to 30 days/);assert.match(html,/https:\/\/www.spotify.com\/account\/privacy\//);
+});
+
+test('Spotify import progress reports real file counts without inventing a percentage',()=>{
+ const {run}=harness();assert.match(run("spotifyProgressText({phase:'reading',files:37,listens:12345})"),/37 files read/);
+ assert.match(run("spotifyProgressText({phase:'reading',files:37,listens:12345})"),/12,345 listens/);
+ assert.doesNotMatch(run("spotifyProgressText({phase:'reading',files:37,listens:12345})"),/%/);
+ assert.match(run("spotifyProgressText({phase:'reading',files:18,percent:48.6})"),/49%/);
+ assert.doesNotMatch(run("spotifyProgressText({phase:'reading',files:37,percent:101})"),/%/);
+});
