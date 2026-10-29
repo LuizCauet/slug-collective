@@ -38,3 +38,14 @@ Before inviting members, test new registration, returning sign-in, invalid OAuth
 - Account deletion cascades through sessions, conversations, messages, blocks, and feedback. Moderation reports retain their reason and timestamp with deleted member references cleared; report text may therefore still contain personal information supplied by its author. Administrators need a retention/removal policy for these reports before broad launch.
 - ListenBrainz account ownership is verified by a user token. The token is sent only to the fixed ListenBrainz validation endpoint and is not persisted. Stored integration data consists of the verified username, imported artist names/identifiers/play counts, and sync timestamp. Disconnecting removes imported data while preserving manual artists.
 - Backend integration tests run against the real D1 schema and app with a stubbed Discord provider. They do not establish that live Discord credentials, redirects, production database binding, or live ListenBrainz service setup are correct.
+
+
+## Public source review — October 28, 2026
+
+The publication review scanned all 42 commits reachable from the local branches and fetched GitHub refs before the showcase update, plus a clean export of tracked source, using checksum-verified Gitleaks 8.30.1. Neither scan detected secrets. A separate exact-value check compared the configured Discord client secret, bootstrap registration code, and admin ID list against 325 unique historical file blobs; it found no matches. Secret values were never printed or copied into reports.
+
+Tracked paths contained no local environment files, runtime databases, private keys, raw listening archives, build output, or application logs. Environment examples contain blank credential fields. Published People/Create and event screenshots were checked against fictional local fixtures; no live member records or private conversations were exported for the showcase.
+
+GitHub Actions now scans Git history with redacted output on pushes and pull requests. `npm run check:public` rejects tracked environment files, runtime databases, exports, private keys, logs, and build output. Additional ignore rules cover database sidecars and private key files. Infrastructure resource IDs in configuration are identifiers, not authentication credentials; actual credentials remain outside the source tree.
+
+These checks cover the repository and its reachable history at review time. They do not inspect collaborators' unrelated machines, future commits, or third-party backups. If a real credential is ever exposed, revoke or rotate it before attempting history cleanup.

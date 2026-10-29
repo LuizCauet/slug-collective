@@ -2,7 +2,7 @@
 
 ### A music-first community app for UC Santa Cruz students.
 
-Discover people through the artists you actually listen to, find collaborators across creative disciplines, and start a conversation with something in common.
+Discover people through the artists you actually listen to, find collaborators across creative disciplines, start a conversation with something in common, and form music production groups at club events.
 
 [Live application](https://beta.slugcollective.workers.dev/) · [Architecture](#architecture) · [Local development](#local-development) · [Technical documentation](#technical-documentation)
 
@@ -14,7 +14,7 @@ Discover people through the artists you actually listen to, find collaborators a
 
 As president of the Slug Collective, I wanted to make it easier for people in our creative community to meet. A shared niche artist can be a much better conversation starter than a generic interest tag. Finding someone to make music, shoot a show, or design a cover with should feel equally approachable.
 
-The result is a focused product with two discovery modes: **People** for shared listening and **Create** for creative collaboration. It is built around the club's identity, with a mobile-first interface and a short path from joining to starting a conversation.
+The result is a focused product with two discovery modes: **People** for shared listening and **Create** for creative collaboration. It is built around the club's identity, with a mobile-first interface and a short path from joining to starting a conversation. **Events** brings those connections into the room: members scan a QR code, join with their saved taste, and get a host-reviewed production group.
 
 ## Product experience
 
@@ -31,9 +31,16 @@ The result is a focused product with two discovery modes: **People** for shared 
 | --- | --- |
 | ![Onboarding requiring three artists before continuing](docs/screenshots/onboarding.png) | ![Create board with creative roles and complementary skills](docs/screenshots/create.png) |
 
+## Event groups
+
+![Attendee results with fictional local members, showing their own production group first](docs/screenshots/groups.png)
+
+Admins share a QR code, choose the preferred group size, and review taste-based assignments before publishing. There is no fixed 50-attendee cap. The grouping algorithm is a bounded heuristic; it does not claim a globally optimal partition. [Read the event design and validation](docs/EVENT_GROUPS.md).
+
 ## Engineering highlights
 
 - **Explainable recommendations.** Shared artists are weighted by how uncommon they are within the community. Shared genres add a smaller contribution per overlap, and Create adds complementary creative roles. Cards show shared artist and genre counts instead of a match percentage.
+- **Reviewed event grouping.** Admins configure group size, sort attendees by shared artists with genre fallback, adjust a private draft, and publish assignments. Late arrivals wait for manual placement; published groups stay stable. Members see their own group first and can choose to view all groups.
 - **Privacy-conscious Spotify imports.** ZIP and JSON exports are parsed in a browser Web Worker. Members review the extracted artists before saving; raw archives and unrelated account fields stay on the device. The server accepts validated artist aggregates.
 - **Resilient artist discovery.** MusicBrainz search falls back to Apple's artist catalog. Debouncing, cancellation, stale-response protection, bounded requests, and separate provider budgets keep search usable. Custom names remain available.
 - **Layered caching.** Shared D1 results last seven days, including reuse of exact artist names found in earlier results. A bounded browser catalog remembers up to 500 public artist records for 30 days and supplies immediate partial-name suggestions across visits.

@@ -12,7 +12,8 @@
     "check": "node --check server/app.js && node --check server/events.js && node --check server/grouping.js && node --check web/app.js && node --check web/events.js",
     "db:generate": "drizzle-kit generate",
     "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
-    "cloudflare:secrets": "node scripts/cloudflare-secrets.mjs"
+    "cloudflare:secrets": "node scripts/cloudflare-secrets.mjs",
+    "check:public": "node scripts/check-public-files.mjs"
   },
   "devDependencies": {
     "drizzle-kit": "^0.30.0",
