@@ -32,7 +32,7 @@ The result is a focused product with two discovery modes: **People** for shared 
 
 ## Engineering highlights
 
-- **Explainable recommendations.** Shared artists are weighted by how uncommon they are within the community. Create adds complementary creative roles. Recommendations surface the shared artist or skill pairing instead of an arbitrary match percentage.
+- **Explainable recommendations.** Shared artists are weighted by how uncommon they are within the community. Shared genres add a smaller contribution per overlap, and Create adds complementary creative roles. Cards show shared artist and genre counts instead of a match percentage.
 - **Privacy-conscious Spotify imports.** ZIP and JSON exports are parsed in a browser Web Worker. Members review the extracted artists before saving; raw archives and unrelated account fields stay on the device. The server accepts validated artist aggregates.
 - **Resilient artist discovery.** MusicBrainz search falls back to Apple's artist catalog. Debouncing, cancellation, stale-response protection, bounded requests, and separate provider budgets keep search usable. Custom names remain available.
 - **Layered caching.** Shared D1 results last seven days, including reuse of exact artist names found in earlier results. A bounded browser catalog remembers up to 500 public artist records for 30 days and supplies immediate partial-name suggestions across visits.
@@ -44,12 +44,15 @@ The result is a focused product with two discovery modes: **People** for shared 
 The current recommender is a deterministic baseline, **not a trained ML model**. For a shared artist, its contribution is:
 
 ```text
-artist weight = 1 + ln((community size + 1) / (artist listener count + 1))
+shared artist contribution = 3 × (1 + ln((candidate count + 1) / (artist listener count + 1)))
+shared genre contribution = 1
+People score = sum(shared artist contributions) + number of shared genres
+Create score = People score + 5 × number of complementary creative roles
 ```
 
-People ranking sums those contributions. Create also rewards predefined complementary role pairs, such as production and vocals. Names are normalized for case, Unicode, and whitespace; stable tie-breaking keeps ordering predictable.
+People ranking sums those contributions and orders higher scores first. Shared taste includes members with a shared artist or genre. Create also rewards predefined complementary role pairs, such as production and vocals. Equal scores use member ID ordering to keep the result predictable.
 
-Members can select up to ten genres from suggestions or add custom names. Genres provide profile context; they do not change this baseline's matching weights.
+Members can select up to ten genres from suggestions or add custom names. Artist and genre names are normalized for Unicode, case and whitespace, and duplicates count once. Genre synonyms are not merged: “Hip-hop” and “Hip hop” remain different labels. See [matching details](docs/MATCHING.md) for the exact rules.
 
 This favors meaningful niche overlap without hiding the reasoning. Recommendation feedback is stored for future evaluation. A next step is to compare this baseline against learned artist representations using opt-in relevance feedback and a defined evaluation protocol, rather than assume a more complex model is better.
 
@@ -124,7 +127,7 @@ Deployment requires authorization to the intended Cloudflare account. Follow the
 
 ## Validation and current scope
 
-The current suite contains **85 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
+The current suite contains **106 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
 
 Browser checks additionally cover the onboarding-to-discovery flow and persistence after refresh. Automated UI state tests are not a full browser end-to-end suite.
 

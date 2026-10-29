@@ -42,3 +42,31 @@ test('artist matching normalizes case and whitespace and never invents overlap',
  assert.ok(result[0].sharedArtists.includes('feeble little horse'));
  assert.ok(rankMembers(members,{...profile,artists:['An artist not in the demo']}).every(m=>m.sharedArtists.length===0));
 });
+
+test('genre-only overlap ranks above no overlap and contributes one point per shared genre',()=>{
+ const sample=[{id:'none',artists:['Other'],genres:['Techno']},{id:'genre',genres:['Shoegaze']}];
+ const result=rankMembers(sample,{artists:['Personal artist'],genres:['shoegaze']});
+ assert.equal(result[0].id,'genre');assert.deepEqual(result[0].sharedGenres,['Shoegaze']);assert.equal(result[0].genreOverlapCount,1);assert.equal(result[0].artistOverlapCount,0);assert.equal(result[0].tasteScore,1);assert.equal(result[1].score,0);
+});
+test('combined artist and genre overlap beats the same artist overlap alone',()=>{
+ const result=rankMembers([{id:'artist',artists:['Deep Cut']},{id:'both',artists:['Deep Cut'],genres:['Ambient']},{id:'none'}],{artists:['Deep Cut'],genres:['Ambient']});
+ assert.deepEqual(result.map(m=>m.id),['both','artist','none']);assert.equal(result[0].score-result[1].score,1);assert.equal(result[0].artistOverlapCount,1);assert.equal(result[0].genreOverlapCount,1);assert.equal(result[0].tasteScore,result[0].score);
+});
+test('normalized duplicate artists and genres never inflate overlap counts, rarity, or scores',()=>{
+ const plain={id:'member',artists:['Deep Cut'],genres:['Dream pop']};
+ const duplicated={...plain,artists:['  Deep   Cut ','DEEP CUT','Ｄｅｅｐ Ｃｕｔ'],genres:[' Dream   pop ','DREAM POP','Ｄｒｅａｍ ｐｏｐ']};
+ const profile={artists:['deep cut','DEEP CUT'],genres:['dream pop','ＤＲＥＡＭ ＰＯＰ']};
+ const base=rankMembers([plain],profile)[0],result=rankMembers([duplicated],profile)[0];
+ assert.equal(result.artistOverlapCount,1);assert.equal(result.genreOverlapCount,1);assert.equal(result.tasteScore,base.tasteScore);assert.equal(result.score,4);assert.deepEqual(result.sharedArtists,['Deep Cut']);assert.deepEqual(result.sharedGenres,['Dream pop']);
+});
+test('missing artist, genre, album, and role arrays remain safe with stable equal-score ordering',()=>{
+ const result=rankMembers([{id:'b'},{id:'a',genres:null,artists:null,roles:null,albums:null}],{});
+ assert.deepEqual(result.map(m=>m.id),['a','b']);assert.ok(result.every(m=>m.score===0&&m.artistOverlapCount===0&&m.genreOverlapCount===0));
+ assert.deepEqual(rankMembers(undefined),[]);
+});
+test('Create retains its five-point complementary-role bonus on top of combined taste',()=>{
+ const member={id:'creator',artists:['Deep Cut'],genres:['Ambient'],roles:['Vocals']};
+ const profile={artists:['Deep Cut'],genres:['Ambient'],roles:['Production']};
+ const person=rankMembers([member],profile)[0],creator=rankMembers([member],profile,'create')[0];
+ assert.equal(creator.tasteScore,person.tasteScore);assert.equal(creator.score-person.score,5);assert.equal(creator.artistOverlapCount,1);assert.equal(creator.genreOverlapCount,1);assert.deepEqual(creator.complements,['Vocals']);
+});

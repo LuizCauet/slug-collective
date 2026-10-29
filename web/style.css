@@ -272,3 +272,12 @@ svg.ui-icon {stroke-width:1.5}
  .genre-custom-editor .genre-input-row>.field{grid-column:1/-1}
  .genre-custom-editor .genre-input-row>.text-button{justify-self:start;padding-right:12px}
 }
+
+/* Small explanations make the ordering readable without a match percentage. */
+.match-overlap{font-size:11px;font-weight:600;line-height:1.5;color:var(--purple);margin:14px 0 0;overflow-wrap:anywhere}
+.genre-match{font-size:11px;line-height:1.5;color:var(--muted);margin:6px 0 0;overflow-wrap:anywhere}
+.section-label .sort-label{font-size:11px;font-weight:400;color:var(--muted);text-align:right}
+@media(max-width:420px){
+ .section-label{gap:12px;align-items:baseline}
+ .section-label .sort-label{max-width:55%}
+}

@@ -12,7 +12,7 @@ Existing accounts are grandfathered into the completed state when the requiremen
 
 The first-time flow asks only for music preferences. Creative roles, collaboration opt-in, biography and other profile details stay optional and available later. This keeps the first visit short while giving People matching enough information to begin.
 
-Genres add profile context. They do not change the current artist-based matching weights or the complementary-role score in Create.
+Genres are optional matching preferences. Each distinct shared genre adds one point; shared artists retain their stronger rarity-weighted contribution, and Create keeps its existing complementary-role bonus. See [matching details](MATCHING.md).
 
 ## Editing later
 

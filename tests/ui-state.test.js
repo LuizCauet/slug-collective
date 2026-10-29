@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {genreSuggestions} from '../web/genres.js';
+import {rankMembers} from '../web/matching.js';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
 function harness(width=390,storage=new Map()){
  const node={addEventListener(){},classList:{toggle(){},add(){},remove(){}},setAttribute(){},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
- const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
+ const context=vm.createContext({localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,rankMembers,musicArt:{},artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
  const run=code=>vm.runInContext(code,context);
  context.onRender=()=>state.renders++;
@@ -286,4 +287,36 @@ test('saving from a profile pane submits the complete draft including fields abs
 test('large Spotify imports remain collapsed behind a compact source summary',()=>{
  const {run}=harness();run("me={artists:[],manualArtists:[],spotify:{artists:Array.from({length:200},(_,i)=>({name:'Artist '+i}))}};");
  const html=run('importedArtists()');assert.match(html,/<details class="imported-source"><summary>Spotify · 200 artists/);assert.doesNotMatch(html,/<details[^>]* open/);assert.match(html,/\+188 more/);
+});
+
+
+test('Shared taste includes artist or genre overlap and preserves real combined-score ordering',()=>{
+ const {run}=harness();run("tab='people';filter='Shared taste';query='';me=normalize({id:'me',artists:['Tirzah'],genres:['Shoegaze','Dream pop'],roles:['Production']});members=[{id:'genre',name:'Genre friend',artists:['Unrelated artist'],genres:['Shoegaze','Dream pop'],roles:[]},{id:'none',name:'New taste',artists:['Other artist'],genres:['Jazz'],roles:[]},{id:'artist',name:'Artist friend',artists:['Tirzah'],genres:[],roles:[]},{id:'both',name:'Both friend',artists:['Tirzah'],genres:['Shoegaze'],roles:[]}].map(normalize)");
+ assert.equal(run("visible().map(m=>m.id).join(',')"),'both,artist,genre');
+ assert.equal(run('visible()[0].artistOverlapCount'),1);assert.equal(run('visible()[0].genreOverlapCount'),1);
+ const html=run('results()');assert.match(html,/Best matches first/);assert.equal(html.indexOf('Both friend')<html.indexOf('Artist friend'),true);assert.equal(html.indexOf('Artist friend')<html.indexOf('Genre friend'),true);
+ run("filter='All people';query='dream pop'");assert.equal(run("visible().map(m=>m.id).join(',')"),'genre');
+});
+
+test('People cards report accurate overlap counts and genre-only cards never imply an unrelated artist is shared',()=>{
+ const {run}=harness();run("tab='people';me=normalize({artists:['Tirzah'],genres:['Cloud rap','Dream pop'],roles:[]});members=[{id:'genre',name:'Genre friend',artists:['Unrelated artist'],genres:['Cloud rap','Dream pop'],roles:[]},{id:'artist',name:'Artist friend',artists:['Tirzah'],genres:[],roles:[]},{id:'none',name:'New friend',artists:['Other artist'],genres:[],roles:[]}].map(normalize)");
+ const genreHtml=run("card(rankMembers(members,me).find(m=>m.id==='genre'))");assert.match(genreHtml,/0 shared artists · 2 shared genres/);assert.match(genreHtml,/Shared genres: Cloud rap · Dream pop/);assert.match(genreHtml,/>Listening to</);assert.doesNotMatch(genreHtml,/You both listen to/);
+ assert.match(run("card(rankMembers(members,me).find(m=>m.id==='artist'))"),/1 shared artist · 0 shared genres/);
+ assert.match(run("card(rankMembers(members,me).find(m=>m.id==='none'))"),/0 shared artists · 0 shared genres/);
+});
+
+test('genre-only match descriptions and chat context escape member data with singular wording',()=>{
+ const {run}=harness();run("tab='people';me=normalize({artists:[],genres:['<Cloud rap>'],roles:[]});members=[normalize({id:'genre',name:'<Friend>',artists:['<Unrelated artist>'],genres:['<Cloud rap>'],roles:[]})]");
+ const html=run('card(rankMembers(members,me)[0])');assert.match(html,/0 shared artists · 1 shared genre/);assert.match(html,/Shared genre: &lt;Cloud rap&gt;/);assert.match(html,/data-context="Shared genre: &lt;Cloud rap&gt;"/);assert.match(html,/&lt;Friend&gt;/);assert.doesNotMatch(html,/<Cloud rap>|<Friend>|You both listen to/);
+});
+
+test('Create recommendations retain complementary-role ranking and copy after genre matching',()=>{
+ const {run}=harness();run("tab='create';filter='All creatives';query='';me=normalize({artists:[],genres:['Shoegaze'],roles:['Production']});members=[normalize({id:'vocal',name:'Vocalist',artists:[],genres:['Shoegaze'],roles:['Vocals'],openToCollaborating:true}),normalize({id:'closed',name:'Closed',artists:[],genres:['Shoegaze'],roles:['Vocals'],openToCollaborating:false})]");
+ assert.equal(run('visible().length'),1);assert.equal(run('visible()[0].id'),'vocal');assert.match(run('card(visible()[0])'),/Your production \+ their vocals/);
+});
+
+test('People cards handle members with no artist list and still explain genre-only matches',()=>{
+ const {run}=harness();run("tab='people';filter='Shared taste';query='';me=normalize({genres:['Cloud rap']});members=[normalize({id:'genre',name:'Genre friend',genres:['Cloud rap']}),normalize({id:'empty',name:'New friend'})]");
+ assert.equal(run('visible().length'),1);const html=run('card(visible()[0])');assert.match(html,/0 shared artists · 1 shared genre/);assert.match(html,/Shared genre: Cloud rap/);assert.doesNotMatch(html,/You both listen to|undefined/);
+ run("filter='All people'");assert.match(run("card(visible().find(m=>m.id==='empty'))"),/0 shared artists · 0 shared genres/);
 });
