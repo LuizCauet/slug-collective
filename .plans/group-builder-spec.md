@@ -1,6 +1,6 @@
 # Event group builder specification
 
-Status: ready for implementation planning. Interview completed 2026-10-28.
+Status: implemented and deployed to https://beta.slugcollective.workers.dev on 2026-10-29 UTC. Interview completed 2026-10-28.
 Branch: plan/group-builder. This checkout is separate from the shared taste page work.
 
 ## Purpose

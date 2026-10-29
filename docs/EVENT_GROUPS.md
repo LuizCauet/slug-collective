@@ -11,3 +11,14 @@ There is no fixed 50-person attendance cap. Initial local benchmarks cover 50, 1
 The additive migration `0006_event_groups.sql` adds events, attendance, scoring snapshots, roster-change triggers, and an OAuth return path. Draft/publication versions prevent stale writes. Deleted accounts cascade out of attendance and taste snapshots. QR generation is local, using the MIT-licensed generator in `web/vendor/`.
 
 Validation includes matching fixtures, attendance totals beyond 50, access control, CSRF, duplicate joins, stale drafts, late placement, account deletion, and authentication return paths. Browser verification covers host creation, QR decoding to the exact URL, mobile joining, changing size, publication, own-group-first results, all-group navigation, and horizontal overflow.
+
+## Deployment verification — 2026-10-29 UTC
+
+- Source implementation: `673bb24` on `plan/group-builder`; includes shared taste changes through `48c90e5`.
+- Live Worker: https://beta.slugcollective.workers.dev
+- Deployed version: `0d3b6b1a-80a2-4c29-87bc-ba73e43de102`.
+- All 118 automated tests pass; JavaScript checks, build, packaging dry run, and schema-snapshot consistency check pass.
+- Local browser checks pass for admin creation, QR decoding to the exact event URL, mobile joining, group-size changes, draft sorting, publication, own-group-first results, all-group navigation, and overflow. Test data was isolated from production.
+- Live event routes and assets return 200. Downloaded app, events, styles, and QR generator match local source hashes. Health is healthy, Discord is configured, signed-out identity is anonymous, and event API access returns 401 when signed out.
+- Production migration `0006_event_groups.sql` applied successfully; no migration remains pending.
+- Authenticated event creation and publishing were verified locally with the production Worker bundle, not by creating test events in the live club database.
