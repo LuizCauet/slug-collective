@@ -43,6 +43,13 @@
       "when": 1792796508592,
       "tag": "0005_brainy_wiccan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793250000000,
+      "tag": "0006_event_groups",
+      "breakpoints": true
     }
   ]
 }

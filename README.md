@@ -23,6 +23,7 @@ The result is a focused product with two discovery modes: **People** for shared 
 | **Join** | Sign in with Discord and a club invite, choose at least three distinct artists, then optionally add genres during first-time setup. |
 | **People** | Browse profiles ranked by shared artists, search by name or music, and see concrete reasons for a connection. |
 | **Create** | Discover musicians, producers, photographers, designers, and other creatives; filter by role and explore collaboration interests. Participation is opt-in. |
+| **Events** | Join through an event QR code; admins form music production groups from shared taste, review drafts, and publish results. Members see their own group first and can browse all groups. |
 | **Inbox** | Start a conversation from an artist or creative project, with that context carried into a persistent private thread. |
 | **Profile** | Switch between About, Music, Create and Services to edit preferences and manage imports or account settings. Genres are optional; custom entry opens only when needed. |
 
@@ -141,7 +142,7 @@ The application is a deployed club beta. Current tradeoffs are explicit:
 
 ## Technical documentation
 
-[Onboarding](docs/ONBOARDING.md) · [Artist search and caching](docs/ARTIST_SEARCH.md) · [Spotify imports](docs/SPOTIFY_IMPORT.md) · [ListenBrainz](docs/MUSIC.md) · [Discord setup](docs/DISCORD_SETUP.md) · [Deployment](docs/CLOUDFLARE.md) · [Security](docs/SECURITY.md)
+[Event groups](docs/EVENT_GROUPS.md) · [Onboarding](docs/ONBOARDING.md) · [Artist search and caching](docs/ARTIST_SEARCH.md) · [Spotify imports](docs/SPOTIFY_IMPORT.md) · [ListenBrainz](docs/MUSIC.md) · [Discord setup](docs/DISCORD_SETUP.md) · [Deployment](docs/CLOUDFLARE.md) · [Security](docs/SECURITY.md)
 
 ---
 

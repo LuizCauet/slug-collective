@@ -1,3 +1,4 @@
+import {eventRoute} from './events.js';
 import {searchArtists,ArtistSearchError} from './artist-search.js';
 import {connectListenBrainz,syncListenBrainz,MusicError} from './music.js';
 const DAY=86400000,MAX_BODY=32000;
@@ -66,7 +67,8 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
   if(path==='/auth/discord'){
    if(!configured(env))return redirect('/?error=discord_not_configured');
    const invite=url.searchParams.get('invite');if(invite&&invite.length>200)fail(400,'INVALID_INVITE','Invalid invite.');
-   const state=token(),stateHash=await hash(state);await run(db,'INSERT INTO oauth_states(id,invite_hash,expires_at) VALUES (?,?,?)',stateHash,invite?await hash(invite):null,Date.now()+600000);
+   const requestedReturn=url.searchParams.get('returnTo')||'/',returnPath=/^\/events\/[a-zA-Z0-9-]+$/.test(requestedReturn)?requestedReturn:'/';
+   const state=token(),stateHash=await hash(state);await run(db,'INSERT INTO oauth_states(id,invite_hash,expires_at,return_path) VALUES (?,?,?,?)',stateHash,invite?await hash(invite):null,Date.now()+600000,returnPath);
    const auth=new URL('https://discord.com/oauth2/authorize');auth.search=new URLSearchParams({client_id:env.DISCORD_CLIENT_ID,redirect_uri:`${env.APP_ORIGIN}/auth/discord/callback`,response_type:'code',scope:'identify',state}).toString();
    return redirect(auth.href,{'Set-Cookie':cookie('slug_oauth',stateHash,req,600)});
   }
@@ -81,13 +83,14 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
     let user=await get(db,'SELECT * FROM users WHERE discord_id=?',account.id);
     if(!user){if(!await validInvite(db,attempt.invite_hash,env))return redirect('/?error=invite_required');const uid=id(),now=Date.now();const avatar=account.avatar&&/^[a-zA-Z0-9_]+$/.test(account.avatar)?`https://cdn.discordapp.com/avatars/${account.id}/${account.avatar}.png?size=128`:'';await run(db,'INSERT INTO users(id,discord_id,name,avatar,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(discord_id) DO NOTHING',uid,account.id,String(account.global_name||account.username||'Slug').slice(0,40),avatar,now,now);user=await get(db,'SELECT * FROM users WHERE discord_id=?',account.id);}
     const raw=token();await run(db,'INSERT INTO sessions(id,user_id,csrf,expires_at) VALUES (?,?,?,?)',await hash(raw),user.id,token(),Date.now()+DAY*30);
-    const result=redirect('/');result.headers.append('Set-Cookie',cookie('slug_session',raw,req,2592000));result.headers.append('Set-Cookie',cookie('slug_oauth','',req,0));return result;
+    const result=redirect(/^\/events\/[a-zA-Z0-9-]+$/.test(attempt.return_path||'')?attempt.return_path:'/');result.headers.append('Set-Cookie',cookie('slug_session',raw,req,2592000));result.headers.append('Set-Cookie',cookie('slug_oauth','',req,0));return result;
    }catch{return redirect('/?error=discord_login_failed');}
   }
   if(path==='/api/me'&&method==='GET'){const u=await session(req,env);return u?json({authenticated:true,user:userView(u,env,true),csrf:u.csrf}):json({authenticated:false});}
   if(!path.startsWith('/api/'))return staticHandler(req,env);
   const mutation=!['GET','HEAD'].includes(method),u=await authorize(req,env,mutation),uid=u.id;
   if(mutation)await rate(db,`write:${uid}`,120,60000);
+  if(path==='/api/events'||path.startsWith('/api/events/'))return eventRoute(req,env,u,{json,fail,readBody,isAdmin,userView});
   if(path==='/api/logout'&&method==='POST'){await run(db,'DELETE FROM sessions WHERE id=?',u.session_id);return json({ok:true},200,{'Set-Cookie':cookie('slug_session','',req,0)});}
   if(path==='/api/me'&&method==='DELETE'){await run(db,'DELETE FROM users WHERE id=?',uid);return json({ok:true},200,{'Set-Cookie':cookie('slug_session','',req,0)});}
   if(path==='/api/artists/search'){

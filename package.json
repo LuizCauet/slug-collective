@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
     "test": "node scripts/test.mjs",
-    "check": "node --check server/app.js && node --check web/app.js",
+    "check": "node --check server/app.js && node --check server/events.js && node --check server/grouping.js && node --check web/app.js && node --check web/events.js",
     "db:generate": "drizzle-kit generate",
     "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
     "cloudflare:secrets": "node scripts/cloudflare-secrets.mjs"

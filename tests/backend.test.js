@@ -339,3 +339,77 @@ test('onboarding saves optional genres with artists while retaining the artist r
  const manyCompleted=await request('/api/onboarding',{member:large,method:'POST',body:{artists,genres:many}});assert.equal(manyCompleted.status,200);assert.deepEqual((await manyCompleted.json()).user.genres,many);assert.deepEqual((await (await request('/api/me',{member:large})).json()).user.genres,many);
  const plain=await login('142',{completed:false});const completed=await request('/api/onboarding',{member:plain,method:'POST',body:{artists}});assert.equal(completed.status,200);assert.deepEqual((await completed.json()).user.genres,[]);
 });
+
+test('event lifecycle enforces admin review, revisions, late placement, privacy and ending',async()=>{
+ const host=await login('100'),a=await login('710'),b=await login('711'),c=await login('712'),outsider=await login('713');
+ const create={title:'Production night',instructions:'Bring headphones',preferredSize:2};
+ assert.equal((await request('/api/events',{method:'POST',member:a,body:create})).status,403);
+ const created=await request('/api/events',{method:'POST',member:host,body:create});assert.equal(created.status,201);const {id}=await created.json(),base='/api/events/'+id;
+ const view=async who=>(await (await request(base,{member:who})).json()).event;
+ assert.equal((await request(base)).status,401);
+ assert.equal((await request(base+'/join',{method:'POST',member:a,body:{},csrf:false})).status,403);
+ for(const who of [a,b])assert.equal((await request(base+'/join',{method:'POST',member:who,body:{}})).status,200);
+ await request(base+'/join',{method:'POST',member:a,body:{}});assert.equal((await view(host)).count,2);
+ assert.equal((await view(outsider)).roster,undefined);
+ let e=await view(host);assert.equal((await request(base+'/sort',{method:'POST',member:a,body:{version:e.version}})).status,403);
+ assert.equal((await request(base+'/sort',{method:'POST',member:host,body:{version:e.version}})).status,200);
+ e=await view(host);assert.ok(e.draft);assert.equal((await view(a)).draft,undefined);
+ const old=e.version;await request(base+'/join',{method:'POST',member:c,body:{}});
+ assert.equal((await request(base+'/publish',{method:'POST',member:host,body:{version:old}})).status,409);
+ e=await view(host);assert.equal(e.draftStale,true);
+ await request(base+'/sort',{method:'POST',member:host,body:{version:e.version}});e=await view(host);
+ assert.equal(e.draft.groups[0].members.length,3);
+ assert.equal((await request(base+'/publish',{method:'POST',member:host,body:{version:e.version}})).status,200);
+ let published=await view(a);assert.equal(published.published.groups.length,1);assert.equal(published.published.groups[0].warnings,undefined);assert.equal((await view(outsider)).published,undefined);
+ e=await view(host);assert.equal((await request(base+'/sort',{method:'POST',member:host,body:{version:e.version}})).status,409);
+ await request(base+'/join',{method:'POST',member:outsider,body:{}});e=await view(host);
+ assert.ok(!e.published.groups.flatMap(g=>g.members).some(m=>m.id===outsider.user.id));
+ const original=e.published;
+ await request(base,{method:'PUT',member:host,body:{version:e.version,preferredSize:4}});e=await view(host);assert.equal(e.preferredSize,4);assert.deepEqual(e.published,original);
+ const groups=[[a.user.id,b.user.id,c.user.id,outsider.user.id]];
+ assert.equal((await request(base+'/draft',{method:'POST',member:host,body:{version:e.version,groups}})).status,200);e=await view(host);assert.equal(e.draft.groups[0].members.length,4);assert.deepEqual(e.published,original);
+ await request(base+'/publish',{method:'POST',member:host,body:{version:e.version}});assert.equal((await view(a)).published.groups[0].members.length,4);
+ e=await view(host);await request(base+'/end',{method:'POST',member:host,body:{version:e.version}});assert.equal((await view(a)).phase,'ended');
+ assert.equal((await request(base+'/leave',{method:'POST',member:a,body:{}})).status,409);
+ assert.equal((await request(base+'/join',{method:'POST',member:a,body:{}})).status,409);
+});
+
+test('events do not cap attendance at 50 and reject duplicate, blocked or singleton draft publication',async()=>{
+ const host=await login('100');const {id}=await (await request('/api/events',{method:'POST',member:host,body:{title:'Large session',preferredSize:5}})).json(),base='/api/events/'+id;
+ const now=Date.now();await db.batch(Array.from({length:55},(_,i)=>db.prepare('INSERT INTO users(id,discord_id,name,created_at,updated_at,onboarding_completed_at) VALUES (?,?,?,?,?,?)').bind('event-person-'+i,'8000'+i,'Event person '+i,now,now,now)));
+ await db.batch(Array.from({length:55},(_,i)=>db.prepare("INSERT INTO event_attendees(event_id,user_id,status,joined_at) VALUES (?,?,'active',?)").bind(id,'event-person-'+i,now)));
+ const view=async()=>(await (await request(base,{member:host})).json()).event;
+ let e=await view();assert.equal(e.count,55);
+ assert.equal((await request(base+'/sort',{method:'POST',member:host,body:{version:e.version}})).status,200);e=await view();assert.equal(e.draft.groups.flatMap(g=>g.members).length,55);
+ assert.equal((await request(base+'/draft',{method:'POST',member:host,body:{version:e.version,groups:[['event-person-0','event-person-0']]}})).status,400);
+ await db.prepare('INSERT INTO blocks(blocker_id,blocked_id,created_at) VALUES (?,?,?)').bind('event-person-0','event-person-1',now).run();
+ assert.equal((await request(base+'/draft',{method:'POST',member:host,body:{version:e.version,groups:[['event-person-0','event-person-1']]}})).status,400);
+ await request(base+'/draft',{method:'POST',member:host,body:{version:e.version,groups:[['event-person-0']]}});e=await view();
+ assert.equal((await request(base+'/publish',{method:'POST',member:host,body:{version:e.version}})).status,400);
+ await request(base,{method:'PUT',member:host,body:{version:e.version,joiningOpen:false}});const other=await login('715');assert.equal((await request(base+'/join',{method:'POST',member:other,body:{}})).status,409);
+});
+
+test('event login return path is preserved and external redirect attempts are rejected',async()=>{
+ const a=await login('716');
+ for(const [returnTo,expected] of [['/events/test-event','/events/test-event'],['https://evil.example','/'],['//evil.example','/']]){
+  const start=await request('/auth/discord?returnTo='+encodeURIComponent(returnTo));const state=new URL(start.headers.get('Location')).searchParams.get('state');
+  const response=await app.fetch(new Request(origin+'/auth/discord/callback?state='+state+'&code=716',{headers:{Cookie:jar(start)}}),env,{});assert.equal(response.headers.get('Location'),expected);
+ }
+});
+
+test('event joins are atomic, removals revoke access, and account deletion removes taste snapshots',async()=>{
+ const host=await login('100'),a=await login('717'),b=await login('718'),newMember=await login('719',{completed:false});
+ const {id}=await (await request('/api/events',{method:'POST',member:host,body:{title:'Atomic session',preferredSize:2}})).json(),base='/api/events/'+id;
+ const view=async who=>(await (await request(base,{member:who})).json()).event;
+ assert.equal((await request(base+'/join',{member:newMember,method:'POST',body:{}})).status,403);
+ const joined=await Promise.all(Array.from({length:4},()=>request(base+'/join',{member:a,method:'POST',body:{}})));assert.ok(joined.every(r=>r.status===200));assert.equal((await view(host)).count,1);
+ await request(base+'/join',{member:b,method:'POST',body:{}});let e=await view(host);
+ await request(base+'/sort',{member:host,method:'POST',body:{version:e.version}});e=await view(host);
+ await request(base+'/publish',{member:host,method:'POST',body:{version:e.version}});e=await view(host);
+ assert.equal((await view(a)).published.groups[0].members.length,2);
+ await request(base+'/remove',{member:host,method:'POST',body:{version:e.version,memberId:a.user.id}});
+ assert.equal((await view(a)).published,undefined);assert.equal((await request(base+'/join',{member:a,method:'POST',body:{}})).status,403);
+ await request('/api/me',{member:b,method:'DELETE'});
+ assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM event_tastes WHERE user_id=?').bind(b.user.id).first()).n,0);
+ assert.equal((await view(host)).published.groups.length,0);
+});
