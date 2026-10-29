@@ -19,7 +19,7 @@ const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
 function text(value,max,field,required=false){if(typeof value!=='string'||value.length>max||/[\u0000]/.test(value))fail(400,'INVALID_FIELD',`Please check ${field}.`);const result=value.trim();if(required&&!result)fail(400,'INVALID_FIELD',`${field} is required.`);return result;}
 function artistNames(values){if(!Array.isArray(values)||values.length>200)fail(400,'INVALID_ARTISTS','Choose at most 200 artists.');return [...new Map(values.map(a=>{const name=text(a,120,'artist',true).replace(/\s+/g,' ');return [name.normalize('NFKC').toLowerCase(),name];})).values()];}
 function genreNames(values){
- if(!Array.isArray(values)||values.length>10)fail(400,'INVALID_GENRES','Choose at most ten genres.');
+ if(!Array.isArray(values))fail(400,'INVALID_GENRES','Send genres as a list.');
  const unique=new Map();
  for(const value of values){
   if(typeof value!=='string'||/[\u0000]/.test(value))fail(400,'INVALID_GENRES','Please check your genres.');

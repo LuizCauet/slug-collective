@@ -213,14 +213,14 @@ test('Spotify import progress reports real file counts without inventing a perce
 });
 
 
-test('genres are normalized, limited to ten, and custom duplicates receive inline feedback',()=>{
+test('genres are normalized without a selection cap and custom duplicates receive inline feedback',()=>{
  const {run}=harness();run('draft={genres:[]}');
  assert.equal(run("changeGenre('  UK   garage  ')"),true);assert.equal(run('draft.genres[0]'),'UK garage');
  assert.equal(run("changeGenre('uk garage')"),false);assert.match(run('genreError'),/already selected/);
  assert.equal(run("changeGenre('a'.repeat(41))"),false);assert.match(run('genreError'),/40 characters/);
  run("draft.genres=Array.from({length:10},(_,i)=>'Genre '+i)");
- assert.equal(run("changeGenre('One more')"),false);assert.match(run('genreError'),/up to 10/);
- assert.equal(run("changeGenre('Genre 0',true)"),true);assert.equal(run('draft.genres.length'),9);
+ assert.equal(run("changeGenre('One more')"),true);assert.equal(run('draft.genres.length'),11);
+ assert.equal(run("changeGenre('Genre 0',true)"),true);assert.equal(run('draft.genres.length'),10);
  assert.equal(run("changeGenre('<custom>')"),true);assert.match(run('genreEditor()'),/&lt;custom&gt;/);
 });
 
@@ -319,4 +319,20 @@ test('People cards handle members with no artist list and still explain genre-on
  const {run}=harness();run("tab='people';filter='Shared taste';query='';me=normalize({genres:['Cloud rap']});members=[normalize({id:'genre',name:'Genre friend',genres:['Cloud rap']}),normalize({id:'empty',name:'New friend'})]");
  assert.equal(run('visible().length'),1);const html=run('card(visible()[0])');assert.match(html,/0 shared artists · 1 shared genre/);assert.match(html,/Shared genre: Cloud rap/);assert.doesNotMatch(html,/You both listen to|undefined/);
  run("filter='All people'");assert.match(run("card(visible().find(m=>m.id==='empty'))"),/0 shared artists · 0 shared genres/);
+});
+
+test('genre selection counts use natural wording in onboarding and Profile with more than ten choices',()=>{
+ const {run}=harness();run("draft={genres:Array.from({length:14},(_,i)=>'Genre '+i)};tab='onboarding'");
+ assert.match(run('genreEditor()'),/14 genres selected/);assert.doesNotMatch(run('genreEditor()'),/\/ 10/);
+ run("tab='profile'");assert.match(run('genreEditor()'),/14 genres selected/);
+ run("draft.genres=['Shoegaze']");assert.match(run('genreEditor()'),/1 genre selected/);
+});
+
+test('Profile and onboarding saves submit more than ten genres without truncation',async()=>{
+ for(const mode of ['profile','onboarding']){
+  const {run,state}=harness();run(`me=normalize({id:'viewer',name:'Member',artists:['Tirzah','Clairo','Grouper'],roles:[],onboardingCompleted:${mode==='profile'}});draft=createDraft(me);draft.genres=Array.from({length:14},(_,i)=>'Genre '+i);tab='${mode}';onboardingStep=1;toast=()=>{}`);
+  state.apiHandler=async(path,options)=>path==='/api/members'?{members:[]}:{user:{id:'viewer',name:'Member',artists:['Tirzah','Clairo','Grouper'],roles:[],...options.body,onboardingCompleted:true}};
+  const button={isConnected:false};await state.listeners.submit[0]({target:{id:mode==='profile'?'profile-form':'onboarding-form',querySelector:()=>button},preventDefault(){}});
+  assert.equal(state.requests[0].path,mode==='profile'?'/api/profile':'/api/onboarding');assert.equal(state.requests[0].options.body.genres.length,14);assert.equal(state.requests[0].options.body.genres[13],'Genre 13');
+ }
 });

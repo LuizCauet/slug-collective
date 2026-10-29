@@ -4,7 +4,7 @@ After a new member signs in with Discord and a valid club invite, show focused m
 
 Members choose at least **three distinct artists** using the same live autocomplete and custom-name entry available in Profile. Names are compared after case/whitespace normalization, so duplicate spellings do not satisfy the minimum. Niche artists do not need to exist in either provider catalog. Existing autocomplete caching, keyboard support and provider-failure fallback apply here too.
 
-Continue stays disabled below the minimum. The next step asks about genres and is optional. Members can pick suggestions, enter a custom genre, go back to their artists, or skip genres. Allow up to ten distinct genres, with at most 40 characters per name. No genre choice is required to join.
+Continue stays disabled below the minimum. The next step asks about genres and is optional. Members can pick suggestions, enter a custom genre, go back to their artists, or skip genres. There is no fixed genre-count limit. Each name can contain at most 40 characters, and the existing request-body size safeguard still applies when saving. No genre choice is required to join.
 
 Finishing setup saves the artist and genre choices and marks onboarding complete on the server before showing People. Skipping genres completes setup with no genres selected. A failed save keeps the choices visible and shows an inline error. Refreshing or signing in on another device must not bypass an incomplete account's setup. Once complete, members can edit artists and genres in Profile without repeating onboarding.
 
@@ -18,4 +18,4 @@ Genres are optional matching preferences. Each distinct shared genre adds one po
 
 Profile groups settings into About, Music, Create and Services. Only the chosen section is visible. Switching sections keeps unsaved edits in the shared draft; Save profile remains the explicit persistence action. Services contains listening imports and account or administrator actions, separate from music preferences.
 
-Genre suggestions appear as compact selectable chips. An “Add custom genre” chip opens a small inline input with Add and Cancel controls. The custom input is hidden until requested, in both onboarding and Profile. Selected suggested genres stay marked in the list; custom genres have removable pills. The ten-genre limit still applies to the combined selection.
+Genre suggestions appear as compact selectable chips. An “Add custom genre” chip opens a small inline input with Add and Cancel controls. The custom input is hidden until requested, in both onboarding and Profile. Selected suggested genres stay marked in the list; custom genres have removable pills. Suggestions and custom names use the same normalization, without a separate count limit.

@@ -324,8 +324,8 @@ test('genres persist in profile views, normalize custom names, and preserve omit
  const refreshed=(await (await request('/api/me',{member})).json()).user;assert.deepEqual(refreshed.genres,user.genres);
  const shown=(await (await request('/api/members',{member:observer})).json()).members.find(m=>m.id===member.user.id);assert.deepEqual(shown.genres,user.genres);
  const omitted=(await (await request('/api/profile',{member,method:'PUT',body:profile({name:'Changed name'})})).json()).user;assert.deepEqual(omitted.genres,user.genres);
- for(const genres of [null,{},'indie',[1],[''],['   '],['x'.repeat(41)],['bad\u0000genre'],Array.from({length:11},(_,n)=>`Genre ${n}`)])assert.equal((await request('/api/profile',{member,method:'PUT',body:profile({genres})})).status,400);
- const ten=Array.from({length:10},(_,n)=>`Genre ${n}`);assert.equal((await request('/api/profile',{member,method:'PUT',body:profile({genres:ten})})).status,200);
+ for(const genres of [null,{},'indie',[1],[''],['   '],['x'.repeat(41)],['bad\u0000genre']])assert.equal((await request('/api/profile',{member,method:'PUT',body:profile({genres})})).status,400);
+ const many=Array.from({length:50},(_,n)=>`Genre ${n}`);const manySaved=await request('/api/profile',{member,method:'PUT',body:profile({genres:many})});assert.equal(manySaved.status,200);assert.deepEqual((await manySaved.json()).user.genres,many);assert.deepEqual((await (await request('/api/me',{member})).json()).user.genres,many);
  const cleared=(await (await request('/api/profile',{member,method:'PUT',body:profile({genres:[]})})).json()).user;assert.deepEqual(cleared.genres,[]);
 });
 test('onboarding saves optional genres with artists while retaining the artist requirement',async()=>{
@@ -335,5 +335,7 @@ test('onboarding saves optional genres with artists while retaining the artist r
  const saved=await request('/api/onboarding',{member,method:'POST',body:{artists,genres:['  Ambient  ','Ａｍｂｉｅｎｔ','Forest punk']}});assert.equal(saved.status,200);
  const user=(await saved.json()).user;assert.deepEqual(user.genres,['Ambient','Forest punk']);assert.equal(user.onboardingCompleted,true);
  assert.deepEqual((await (await request('/api/me',{member})).json()).user.genres,user.genres);
+ const large=await login('143',{completed:false}),many=Array.from({length:30},(_,n)=>`Custom genre ${n}`);
+ const manyCompleted=await request('/api/onboarding',{member:large,method:'POST',body:{artists,genres:many}});assert.equal(manyCompleted.status,200);assert.deepEqual((await manyCompleted.json()).user.genres,many);assert.deepEqual((await (await request('/api/me',{member:large})).json()).user.genres,many);
  const plain=await login('142',{completed:false});const completed=await request('/api/onboarding',{member:plain,method:'POST',body:{artists}});assert.equal(completed.status,200);assert.deepEqual((await completed.json()).user.genres,[]);
 });

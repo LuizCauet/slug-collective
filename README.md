@@ -52,7 +52,7 @@ Create score = People score + 5 × number of complementary creative roles
 
 People ranking sums those contributions and orders higher scores first. Shared taste includes members with a shared artist or genre. Create also rewards predefined complementary role pairs, such as production and vocals. Equal scores use member ID ordering to keep the result predictable.
 
-Members can select up to ten genres from suggestions or add custom names. Artist and genre names are normalized for Unicode, case and whitespace, and duplicates count once. Genre synonyms are not merged: “Hip-hop” and “Hip hop” remain different labels. See [matching details](docs/MATCHING.md) for the exact rules.
+Members can select genres from suggestions or add custom names, with no fixed genre-count limit. Each genre name can contain at most 40 characters; the existing request-body size safeguard still applies when saving. Artist and genre names are normalized for Unicode, case and whitespace, and duplicates count once. Genre synonyms are not merged: “Hip-hop” and “Hip hop” remain different labels. See [matching details](docs/MATCHING.md) for the exact rules.
 
 This favors meaningful niche overlap without hiding the reasoning. Recommendation feedback is stored for future evaluation. A next step is to compare this baseline against learned artist representations using opt-in relevance feedback and a defined evaluation protocol, rather than assume a more complex model is better.
 
@@ -127,7 +127,7 @@ Deployment requires authorization to the intended Cloudflare account. Follow the
 
 ## Validation and current scope
 
-The current suite contains **106 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
+The current suite contains **108 passing automated tests**, covering OAuth state and invites, CSRF and access control, conversation isolation and retry behavior, onboarding, provider failures, shared caches, malformed Spotify archives, recommendation ordering, and UI state transitions. Integration tests run the application against isolated D1 databases with the actual migrations; external identity and music services are mocked for repeatable tests.
 
 Browser checks additionally cover the onboarding-to-discovery flow and persistence after refresh. Automated UI state tests are not a full browser end-to-end suite.
 
