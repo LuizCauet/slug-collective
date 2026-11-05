@@ -15,9 +15,10 @@ async function request(path,{member,method='GET',body,csrf=true,originHeader=ori
  const response=await app.fetch(new Request(origin+path,{method,headers,...(body!==undefined?{body:JSON.stringify(body)}:{})}),env,{});
  return response;
 }
-async function login(discordId,{invite='secret-club-invite',completed=true}={}){
+async function login(discordId,{invite='secret-club-invite',completed=true,returnTo}={}){
  accounts.set(discordId,{id:discordId,username:`slug${discordId}`,global_name:`Member ${discordId}`});
- const start=await app.fetch(new Request(origin+'/auth/discord'+(invite?`?invite=${invite}`:''),{headers:{'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
+ const params=new URLSearchParams();if(invite)params.set('invite',invite);if(returnTo)params.set('returnTo',returnTo);
+ const start=await app.fetch(new Request(origin+'/auth/discord'+(params.size?'?'+params.toString():''),{headers:{'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  const state=new URL(start.headers.get('Location')).searchParams.get('state');
  const response=await app.fetch(new Request(`${origin}/auth/discord/callback?state=${state}&code=${discordId}`,{headers:{Cookie:jar(start),'CF-Connecting-IP':`192.0.2.${Number(discordId)%250}`}}),env,{});
  if(!jar(response))return {response};
@@ -412,4 +413,36 @@ test('event joins are atomic, removals revoke access, and account deletion remov
  await request('/api/me',{member:b,method:'DELETE'});
  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM event_tastes WHERE user_id=?').bind(b.user.id).first()).n,0);
  assert.equal((await view(host)).published.groups.length,0);
+});
+
+test('an open event link registers a new club member without a separate invite and preserves explicit joining',async()=>{
+ const host=await login('100');const {id}=await (await request('/api/events',{member:host,method:'POST',body:{title:'New member production night',preferredSize:3}})).json();
+ const member=await login('730',{invite:null,completed:false,returnTo:'/events/'+id});
+ assert.equal(member.response.headers.get('Location'),'/events/'+id);assert.ok(member.cookie);assert.equal(member.user.onboardingCompleted,false);
+ const view=async()=>(await (await request('/api/events/'+id,{member})).json()).event;
+ assert.equal((await view()).joined,false);assert.equal((await view()).count,0);
+ assert.equal((await request('/api/events/'+id+'/join',{member,method:'POST',body:{}})).status,403);
+ assert.equal((await request('/api/onboarding',{member,method:'POST',body:{artists:['Clairo','Tirzah','Burial'],genres:[]}})).status,200);
+ assert.equal((await view()).joined,false);
+ assert.equal((await request('/api/events/'+id+'/join',{member,method:'POST',body:{}})).status,200);assert.equal((await view()).joined,true);
+});
+
+test('closed, ended, missing and malformed event links do not grant club membership',async()=>{
+ const host=await login('100');const {id}=await (await request('/api/events',{member:host,method:'POST',body:{title:'Closed invite test'}})).json();
+ await db.prepare('UPDATE events SET joining_open=0 WHERE id=?').bind(id).run();
+ const cases=[['731','/events/'+id],['732','/events/not-a-real-event'],['733','/events/'+id+'?joining_open=1'],['734','https://evil.example/events/'+id],['735','/events/'+id+'/extra']];
+ for(const [account,returnTo] of cases){const denied=await login(account,{invite:null,returnTo});assert.equal(denied.cookie,undefined);assert.match(denied.response.headers.get('Location'),/error=(event_invite_unavailable|invite_required)/);assert.equal(await db.prepare('SELECT id FROM users WHERE discord_id=?').bind(account).first(),null);}
+ await db.prepare("UPDATE events SET phase='ended',joining_open=1 WHERE id=?").bind(id).run();
+ const ended=await login('736',{invite:null,returnTo:'/events/'+id});assert.equal(ended.cookie,undefined);assert.equal(ended.response.headers.get('Location'),'/events/'+id+'?error=event_invite_unavailable');
+ const invited=await login('737',{returnTo:'/events/'+id});assert.ok(invited.cookie,'A normal club invite still works independently of event status');
+ const returning=await login('737',{invite:null,returnTo:'/events/'+id});assert.ok(returning.cookie,'Existing club members can still sign in to past events');
+});
+
+test('closing event joining during Discord sign-in prevents new registration',async()=>{
+ const host=await login('100');const {id}=await (await request('/api/events',{member:host,method:'POST',body:{title:'Admission changes during login'}})).json();
+ accounts.set('738',{id:'738',username:'New musician'});
+ const start=await request('/auth/discord?returnTo='+encodeURIComponent('/events/'+id)),state=new URL(start.headers.get('Location')).searchParams.get('state');
+ await db.prepare('UPDATE events SET joining_open=0 WHERE id=?').bind(id).run();
+ const response=await app.fetch(new Request(origin+'/auth/discord/callback?state='+state+'&code=738',{headers:{Cookie:jar(start)}}),env,{});
+ assert.equal(response.headers.get('Location'),'/events/'+id+'?error=event_invite_unavailable');assert.equal(await db.prepare("SELECT id FROM users WHERE discord_id='738'").first(),null);
 });

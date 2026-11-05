@@ -8,7 +8,7 @@ Discover people through the artists you actually listen to, find collaborators a
 
 ![People discovery showing shared niche artists and album artwork](docs/screenshots/people.png)
 
-> The live beta requires Discord sign-in and a club application invite. Screenshots use fictional members in an isolated local database; they do not expose real member profiles or conversations.
+> The live beta requires Discord sign-in and either a club invite or an open event link for first-time registration. Screenshots use fictional members in an isolated local database; they do not expose real member profiles or conversations.
 
 ## Why I built it
 
@@ -20,7 +20,7 @@ The result is a focused product with two discovery modes: **People** for shared 
 
 | Flow | What members can do |
 | --- | --- |
-| **Join** | Sign in with Discord and a club invite, choose at least three distinct artists, then optionally add genres during first-time setup. |
+| **Join** | Sign in with Discord and a club or open event invite, choose at least three distinct artists, then optionally add genres during first-time setup. |
 | **People** | Browse profiles ranked by shared artists, search by name or music, and see concrete reasons for a connection. |
 | **Create** | Discover musicians, producers, photographers, designers, and other creatives; filter by role and explore collaboration interests. Participation is opt-in. |
 | **Events** | Join through an event QR code; admins form music production groups from shared taste, review drafts, and publish results. Members see their own group first and can browse all groups. |

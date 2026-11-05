@@ -1,6 +1,6 @@
 # Event groups
 
-Admins open **Events**, create a session, and share its QR code or link. Members sign in with their existing account, review saved artists, and explicitly join. An event link does not replace the club invite required for new accounts.
+Admins open **Events**, create a session, and share its QR code or link. Members sign in, review saved artists, and explicitly join. An open event link also serves as a club invite: new members can register with Discord, finish artist onboarding, then return to the event and tap Join. The event must exist, have joining open, and not have ended when the account is created. Closing joining or ending the event disables its link for new club registrations; existing members can still sign in.
 
 Set the preferred group size before sorting; it can be any whole number of at least two. Sorting distributes remainders to avoid singletons. Artists drive matching, with rarer shared artists weighted more strongly. Genres break artist-score ties. Hosts see private overlap warnings, review a draft, move members, and publish it. Only the published version is visible to attendees.
 

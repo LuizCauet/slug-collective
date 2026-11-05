@@ -5,10 +5,10 @@ import {readFile} from 'node:fs/promises';
 import {genreSuggestions} from '../web/genres.js';
 import {rankMembers} from '../web/matching.js';
 const source=(await readFile(new URL('../web/app.js',import.meta.url),'utf8')).replace(/^import .*$/gm,'').replace(/^boot\(\);$/m,'');
-function harness(width=390,storage=new Map()){
+function harness(width=390,storage=new Map(),pageLocation={}){
  const node={addEventListener(){},classList:{toggle(){},add(){},remove(){}},setAttribute(){},innerHTML:'',focus(){state.focused=true;},select(){state.selected=true;}};
  const state={poll:null,calls:[],result:{threads:[]},renders:0,timers:[],artistHandler:null,apiHandler:null,listeners:{},requests:[]};
- const context=vm.createContext({stopEvents(){},eventShell(){return "";},mountEvents(){},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:''},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,rankMembers,musicArt:{},artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
+ const context=vm.createContext({stopEvents(){},eventShell(){return "";},mountEvents(){},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{hidden:false,querySelector:selector=>selector==='#profile-form'?null:node,addEventListener:(type,fn)=>(state.listeners[type]??=[]).push(fn)},window:{innerWidth:width,addEventListener(){},scrollTo(){}},location:{search:'',...pageLocation},URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,AbortController,genreSuggestions,rankMembers,musicArt:{},artistCatalog:['Tirzah','Dean Blunt','Clairo'],normalizeArtist:s=>String(s).normalize('NFKC').trim().toLowerCase(),setTimeout:(fn,delay)=>(state.timers.push({fn,delay}),state.timers.length),clearTimeout(){},setInterval:fn=>(state.poll=fn,1),clearInterval(){},api:async(path,options)=>{state.calls.push(path);state.requests.push({path,options});if(state.apiHandler)return state.apiHandler(path,options);if(path.startsWith('/api/artists/'))return state.artistHandler?state.artistHandler(path):{artists:[]};return path==='/api/threads'?state.result:{messages:[]};}});
  vm.runInContext(source,context);
  const run=code=>vm.runInContext(code,context);
  context.onRender=()=>state.renders++;
@@ -335,4 +335,17 @@ test('Profile and onboarding saves submit more than ten genres without truncatio
   const button={isConnected:false};await state.listeners.submit[0]({target:{id:mode==='profile'?'profile-form':'onboarding-form',querySelector:()=>button},preventDefault(){}});
   assert.equal(state.requests[0].path,mode==='profile'?'/api/profile':'/api/onboarding');assert.equal(state.requests[0].options.body.genres.length,14);assert.equal(state.requests[0].options.body.genres[13],'Genre 13');
  }
+});
+
+test('event sign-in explains club admission and preserves the event through onboarding without auto-joining',async()=>{
+ const {run,state}=harness(390,new Map(),{pathname:'/events/production-night'});
+ run('config.discordConfigured=true');assert.match(run('welcome()'),/An open event link is also your club invite/);assert.match(run('welcome()'),/returnTo=%2Fevents%2Fproduction-night/);
+ run("draft={artists:['Clairo','Tirzah','Burial'],genres:[]}");
+ state.apiHandler=async path=>path==='/api/onboarding'?{user:{id:'new-member',artists:['Clairo','Tirzah','Burial'],manualArtists:['Clairo','Tirzah','Burial'],roles:[],genres:[],onboardingCompleted:true}}:{members:[]};
+ await run('finishOnboarding(true)');assert.equal(run('tab'),'events');assert.ok(!state.calls.some(path=>path.endsWith('/join')));
+});
+
+test('closed event registration gives a specific recovery message while normal sign-in still asks for a club invite',()=>{
+ const closed=harness(390,new Map(),{pathname:'/events/closed',search:'?error=event_invite_unavailable'});closed.run('config.discordConfigured=true');assert.match(closed.run('welcome()'),/Ask the host to reopen joining or share a club invite/);
+ const regular=harness();regular.run('config.discordConfigured=true');assert.match(regular.run('welcome()'),/Club invite link required/);assert.doesNotMatch(regular.run('welcome()'),/An open event link/);
 });

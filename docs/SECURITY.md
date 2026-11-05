@@ -12,7 +12,7 @@ Slug Collective is an invite-only community application. Its login page can be p
 
 ## Trust boundaries
 
-Discord authentication proves control of a Discord identity; it does not by itself prove club membership. New members must also provide an application invite. OAuth state must bind authorization callbacks to the initiating browser. Sessions belong in HTTP-only cookies, and authenticated writes require CSRF protection.
+Discord authentication proves control of a Discord identity; it does not by itself prove club membership. New members must also provide an application invite or an open event link. Event links grant registration only while joining is open and the event has not ended; admission is checked in the account-creation statement, using the event return path stored in single-use OAuth state. Artist onboarding and explicit event joining are still required. OAuth state must bind authorization callbacks to the initiating browser. Sessions belong in HTTP-only cookies, and authenticated writes require CSRF protection.
 
 Every conversation read and write must verify the current member participates in that conversation. A thread identifier is not authorization. The server validates submitted profile fields and decides whether a member is eligible for the Create directory; hiding a button in the browser is insufficient.
 

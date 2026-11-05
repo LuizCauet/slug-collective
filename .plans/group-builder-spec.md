@@ -33,7 +33,7 @@ The following resolve details not explicitly selected during the interview. They
 - Joining and event phase are separate: joining can be open or closed during a lobby or published event; ending always closes joining.
 - Participants can leave. Before publication this invalidates the draft. After publication it updates attendance immediately and marks affected groups as needing host attention; no automatic regrouping. A lone remaining participant sees a clear placement-pending message.
 - Use the current saved taste when generating a draft. Record its scoring input revision and explanations so later profile edits do not silently change groups or their published explanation.
-- Members who have not completed required account onboarding complete the existing flow and return to the event. An event link does not bypass registration invites or account restrictions.
+- Members who have not completed required account onboarding complete the existing flow and return to the event. An open, active event link is also a club registration invite. Recheck that the event exists, has joining open, and has not ended when creating an account; onboarding and explicit event joining remain required.
 - Use current names and photos in past events; do not retain deleted profile information solely for event history. Remove deleted members' identifying data and taste explanations involving them.
 - Honor existing member blocks as a hard constraint on sharing a group. Do not expose who blocked whom. If constraints prevent complete placement, show the host a generic placement warning rather than silently violating them.
 

@@ -81,7 +81,15 @@ export function createApp({fetcher=fetch,staticHandler=()=>new Response('Not fou
     if(!response.ok)return redirect('/?error=discord_login_failed');const grant=await response.json();if(!grant.access_token)return redirect('/?error=discord_login_failed');
     const accountResponse=await fetcher('https://discord.com/api/v10/users/@me',{headers:{Authorization:`Bearer ${grant.access_token}`},signal:AbortSignal.timeout(12000)});if(!accountResponse.ok)return redirect('/?error=discord_login_failed');const account=await accountResponse.json();if(!/^\d{1,30}$/.test(account.id))return redirect('/?error=discord_login_failed');
     let user=await get(db,'SELECT * FROM users WHERE discord_id=?',account.id);
-    if(!user){if(!await validInvite(db,attempt.invite_hash,env))return redirect('/?error=invite_required');const uid=id(),now=Date.now();const avatar=account.avatar&&/^[a-zA-Z0-9_]+$/.test(account.avatar)?`https://cdn.discordapp.com/avatars/${account.id}/${account.avatar}.png?size=128`:'';await run(db,'INSERT INTO users(id,discord_id,name,avatar,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(discord_id) DO NOTHING',uid,account.id,String(account.global_name||account.username||'Slug').slice(0,40),avatar,now,now);user=await get(db,'SELECT * FROM users WHERE discord_id=?',account.id);}
+    if(!user){
+     const clubInvite=await validInvite(db,attempt.invite_hash,env),eventId=/^\/events\/([a-zA-Z0-9-]+)$/.exec(attempt.return_path||'')?.[1];
+     if(!clubInvite&&!eventId)return redirect('/?error=invite_required');
+     const uid=id(),now=Date.now(),avatar=account.avatar&&/^[a-zA-Z0-9_]+$/.test(account.avatar)?`https://cdn.discordapp.com/avatars/${account.id}/${account.avatar}.png?size=128`:'';
+     // Recheck event admission in the account-creation statement: a host can close joining during OAuth.
+     await run(db,"INSERT INTO users(id,discord_id,name,avatar,created_at,updated_at) SELECT ?,?,?,?,?,? WHERE ? OR EXISTS (SELECT 1 FROM events WHERE id=? AND joining_open=1 AND phase<>'ended') ON CONFLICT(discord_id) DO NOTHING",uid,account.id,String(account.global_name||account.username||'Slug').slice(0,40),avatar,now,now,clubInvite?1:0,eventId||'');
+     user=await get(db,'SELECT * FROM users WHERE discord_id=?',account.id);
+     if(!user)return redirect(`${attempt.return_path}?error=event_invite_unavailable`);
+    }
     const raw=token();await run(db,'INSERT INTO sessions(id,user_id,csrf,expires_at) VALUES (?,?,?,?)',await hash(raw),user.id,token(),Date.now()+DAY*30);
     const result=redirect(/^\/events\/[a-zA-Z0-9-]+$/.test(attempt.return_path||'')?attempt.return_path:'/');result.headers.append('Set-Cookie',cookie('slug_session',raw,req,2592000));result.headers.append('Set-Cookie',cookie('slug_oauth','',req,0));return result;
    }catch{return redirect('/?error=discord_login_failed');}
